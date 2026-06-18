@@ -1,5 +1,3 @@
-<div align="center">
-
 # Fool Chat Admin
 
 **Fool Chat 即时通讯系统 · 企业级后台管理平台**
@@ -368,7 +366,3 @@ ssh root@<server> "systemctl restart fool-chat-admin"
 - [ ] AI 动作扩展：好友关系治理、批量通知模板
 - [ ] WebSocket 实时推送审核任务
 - [ ] 国际化（i18n）支持
-
-
-
-</div>
