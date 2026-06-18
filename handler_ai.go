@@ -98,20 +98,10 @@ func (a *app) aiChat(w http.ResponseWriter, r *http.Request, operator string) {
 
 	if decision.Action == nil || decision.Action.Name == "" {
 		if decision.Reply == "" {
-			decision.Reply = "我可以帮你查询用户、查询动态、审核动态、隐藏动态、删除动态、发送通知、查询日志，也能切换壁纸和主题。高危操作会先让你确认。"
+			decision.Reply = "我可以帮你查询用户/动态/日志/好友申请/公告/概览、聚合搜索、审核或批量隐藏动态、删改用户、发送通知；也能切换/下载/上传/预览壁纸、切主题、跳转页面、刷新数据、退出登录。高危操作会先让你确认。"
 		}
 		a.saveAIMessage(p.SessionID, operator, "assistant", decision.Reply, nil, nil)
 		writeJSON(w, aiChatResponse{Reply: decision.Reply, SessionID: p.SessionID})
-		return
-	}
-
-	if isClientOnlyAIAction(decision.Action.Name) {
-		reply := decision.Reply
-		if reply == "" {
-			reply = "已操作。"
-		}
-		a.saveAIMessage(p.SessionID, operator, "assistant", reply, decision.Action, nil)
-		writeJSON(w, aiChatResponse{Reply: reply, Action: decision.Action, SessionID: p.SessionID})
 		return
 	}
 
@@ -122,6 +112,16 @@ func (a *app) aiChat(w http.ResponseWriter, r *http.Request, operator string) {
 		}
 		a.saveAIMessage(p.SessionID, operator, "assistant", reply, decision.Action, nil)
 		writeJSON(w, aiChatResponse{Reply: reply, Action: decision.Action, RequiresConfirm: true, SessionID: p.SessionID})
+		return
+	}
+
+	if isClientOnlyAIAction(decision.Action.Name) {
+		reply := decision.Reply
+		if reply == "" {
+			reply = "已操作。"
+		}
+		a.saveAIMessage(p.SessionID, operator, "assistant", reply, decision.Action, nil)
+		writeJSON(w, aiChatResponse{Reply: reply, Action: decision.Action, SessionID: p.SessionID})
 		return
 	}
 
@@ -169,7 +169,19 @@ delete_dynamic {"id":数字}
 delete_user {"uid":数字}
 switch_wallpaper {} - 随机切换网页背景壁纸
 set_theme {"mode":"dark"|"light"|"toggle"} - 切换主题，dark 暗黑 / light 亮色 / toggle 反转
-如果用户只是咨询，就 action=null。删除用户、删除动态、修改动态状态、发送通知都 requires_confirm=true。switch_wallpaper 和 set_theme 是页面操作，requires_confirm=false。只返回 JSON，不要 Markdown。格式：{"reply":"给管理员看的中文说明","action":{"name":"动作名","args":{}},"requires_confirm":true或false}`
+download_wallpaper {} - 下载当前壁纸到本地
+upload_wallpaper {} - 打开本地图片选择器上传自定义壁纸
+toggle_bg_preview {} - 切换壁纸预览模式（沉浸/退出）
+navigate {"view":"dashboard|users|dynamics|friends|applies|star|notices|ai"} - 跳转到指定页面
+refresh_view {} - 刷新当前页面数据
+logout {} - 退出登录
+query_summary {} - 查看后台概览（用户数、动态数、今日新增、待审等）
+query_friend_applies {"q":"关键词"?, "status":0|1|2?} - 查询好友申请，status 0待处理 1已通过 2已拒绝
+query_star_notices {"q":"关键词"?} - 查询 StarNotice 公告列表
+search_all {"q":"关键词"} - 跨用户/动态/日志聚合搜索
+batch_hide_dynamics_by_keyword {"q":"关键词"} - 批量隐藏所有内容含关键词的动态（高危）
+update_user_role {"uid":数字, "role":数字} - 修改用户角色，role 越大权限越高（高危）
+如果用户只是咨询，就 action=null。delete_user、delete_dynamic、update_dynamic_status、send_notice、logout、batch_hide_dynamics_by_keyword、update_user_role 都 requires_confirm=true。其余页面操作和查询类 requires_confirm=false。只返回 JSON，不要 Markdown。格式：{"reply":"给管理员看的中文说明","action":{"name":"动作名","args":{}},"requires_confirm":true或false}`
 
 	messages := []openAIMessage{{Role: "system", Content: sys}}
 	messages = append(messages, history...)
@@ -219,6 +231,26 @@ func fallbackAIDecision(message string) (aiDecision, bool) {
 	msg := strings.TrimSpace(message)
 	id := firstInt(msg)
 	switch {
+	case strings.Contains(msg, "下载壁纸") || strings.Contains(msg, "保存壁纸"):
+		return aiDecision{Reply: "已开始下载当前壁纸。", Action: &aiAction{Name: "download_wallpaper", Args: map[string]any{}}}, true
+	case strings.Contains(msg, "上传壁纸") || strings.Contains(msg, "自定义壁纸") || strings.Contains(msg, "上传背景"):
+		return aiDecision{Reply: "已打开图片选择器。", Action: &aiAction{Name: "upload_wallpaper", Args: map[string]any{}}}, true
+	case strings.Contains(msg, "预览壁纸") || strings.Contains(msg, "退出预览") || strings.Contains(msg, "全屏壁纸") || strings.Contains(msg, "沉浸"):
+		return aiDecision{Reply: "已切换壁纸预览。", Action: &aiAction{Name: "toggle_bg_preview", Args: map[string]any{}}}, true
+	case strings.Contains(msg, "刷新") || strings.Contains(msg, "重新加载"):
+		return aiDecision{Reply: "已刷新当前页面。", Action: &aiAction{Name: "refresh_view", Args: map[string]any{}}}, true
+	case strings.Contains(msg, "退出登录") || strings.Contains(msg, "登出") || strings.Contains(msg, "注销"):
+		return aiDecision{Reply: "确认退出登录吗？", Action: &aiAction{Name: "logout", Args: map[string]any{}}, RequiresConfirm: true}, true
+	case strings.Contains(msg, "概览") || strings.Contains(msg, "今日新增") || strings.Contains(msg, "今天注册") || strings.Contains(msg, "统计数据") || strings.Contains(msg, "数据汇总"):
+		return aiDecision{Reply: "概览数据如下。", Action: &aiAction{Name: "query_summary", Args: map[string]any{}}}, true
+	case strings.Contains(msg, "好友申请") || strings.Contains(msg, "申请列表"):
+		return aiDecision{Reply: "好友申请如下。", Action: &aiAction{Name: "query_friend_applies", Args: map[string]any{}}}, true
+	case strings.Contains(msg, "公告"):
+		return aiDecision{Reply: "公告列表如下。", Action: &aiAction{Name: "query_star_notices", Args: map[string]any{}}}, true
+	case strings.HasPrefix(msg, "打开") || strings.HasPrefix(msg, "跳到") || strings.HasPrefix(msg, "跳转"):
+		if v := matchView(msg); v != "" {
+			return aiDecision{Reply: "已跳转。", Action: &aiAction{Name: "navigate", Args: map[string]any{"view": v}}}, true
+		}
 	case strings.Contains(msg, "切换壁纸") || strings.Contains(msg, "换壁纸") || strings.Contains(msg, "换背景") || strings.Contains(msg, "换张壁纸"):
 		return aiDecision{Reply: "已切换壁纸。", Action: &aiAction{Name: "switch_wallpaper", Args: map[string]any{}}}, true
 	case strings.Contains(msg, "暗黑") || strings.Contains(msg, "深色") || strings.Contains(msg, "夜间") || strings.Contains(msg, "黑暗模式"):
@@ -272,7 +304,9 @@ func firstInt(s string) int {
 
 func isClientOnlyAIAction(name string) bool {
 	switch name {
-	case "switch_wallpaper", "set_theme":
+	case "switch_wallpaper", "set_theme",
+		"download_wallpaper", "upload_wallpaper", "toggle_bg_preview",
+		"navigate", "refresh_view", "logout":
 		return true
 	default:
 		return false
@@ -281,11 +315,34 @@ func isClientOnlyAIAction(name string) bool {
 
 func isHighRiskAIAction(name string) bool {
 	switch name {
-	case "delete_user", "delete_dynamic", "update_dynamic_status", "send_notice":
+	case "delete_user", "delete_dynamic", "update_dynamic_status", "send_notice",
+		"logout", "batch_hide_dynamics_by_keyword", "update_user_role":
 		return true
 	default:
 		return false
 	}
+}
+
+func matchView(msg string) string {
+	switch {
+	case strings.Contains(msg, "概览") || strings.Contains(msg, "首页") || strings.Contains(msg, "仪表"):
+		return "dashboard"
+	case strings.Contains(msg, "用户"):
+		return "users"
+	case strings.Contains(msg, "动态"):
+		return "dynamics"
+	case strings.Contains(msg, "好友关系") || strings.Contains(msg, "好友列表"):
+		return "friends"
+	case strings.Contains(msg, "好友申请") || strings.Contains(msg, "申请"):
+		return "applies"
+	case strings.Contains(msg, "公告") || strings.Contains(msg, "star"):
+		return "star"
+	case strings.Contains(msg, "通知"):
+		return "notices"
+	case strings.Contains(msg, "ai") || strings.Contains(msg, "AI") || strings.Contains(msg, "助手"):
+		return "ai"
+	}
+	return ""
 }
 
 func describeAIAction(action *aiAction) string {
@@ -408,6 +465,116 @@ func (a *app) executeAIAction(r *http.Request, operator string, action *aiAction
 		}
 		a.logOperation(r, operator, "ai", "delete_user", "user", strconv.Itoa(uid), &uid, fmt.Sprintf("AI 删除账号 UID %d", uid), action.Args)
 		return map[string]any{"ok": true}, nil
+	case "query_summary":
+		rows, err := a.queryMaps(`SELECT
+			(SELECT COUNT(*) FROM ` + "`user`" + `) AS users,
+			(SELECT COUNT(*) FROM ` + "`dynamic`" + `) AS dynamics,
+			(SELECT COUNT(*) FROM ` + "`dynamic`" + ` WHERE DATE(create_time) = CURDATE()) AS today_dynamics,
+			(SELECT COUNT(*) FROM ` + "`dynamic`" + ` WHERE status = 1) AS pending_dynamics,
+			(SELECT COUNT(*) FROM admin_operation_log WHERE module = 'user' AND action = 'create' AND DATE(create_time) = CURDATE()) AS today_users,
+			(SELECT COUNT(*) FROM admin_operation_log WHERE DATE(create_time) = CURDATE()) AS today_operations,
+			(SELECT COUNT(*) FROM friend_apply WHERE status = 0) AS pending_applies,
+			(SELECT COUNT(*) FROM admin_notice) AS notices`)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) == 0 {
+			return map[string]any{}, nil
+		}
+		return rows[0], nil
+	case "query_friend_applies":
+		q := strings.TrimSpace(strArg(action.Args, "q"))
+		conditions := []string{}
+		args := []any{}
+		if q != "" {
+			kw := "%" + q + "%"
+			conditions = append(conditions, "(CAST(fa.from_uid AS CHAR) LIKE ? OR CAST(fa.to_uid AS CHAR) LIKE ? OR fa.back_name LIKE ? OR uf.name LIKE ? OR ut.name LIKE ?)")
+			args = append(args, kw, kw, kw, kw, kw)
+		}
+		if _, ok := action.Args["status"]; ok {
+			s := intArg(action.Args, "status")
+			conditions = append(conditions, "fa.status = ?")
+			args = append(args, s)
+		}
+		where := ""
+		if len(conditions) > 0 {
+			where = "WHERE " + strings.Join(conditions, " AND ")
+		}
+		sqlStr := `SELECT fa.id, fa.from_uid, uf.name AS from_name, fa.to_uid, ut.name AS to_name,
+			fa.back_name, fa.status, fa.create_time
+			FROM friend_apply fa
+			LEFT JOIN ` + "`user`" + ` uf ON fa.from_uid = uf.uid
+			LEFT JOIN ` + "`user`" + ` ut ON fa.to_uid = ut.uid
+			` + where + ` ORDER BY fa.id DESC LIMIT 20`
+		return a.queryMaps(sqlStr, args...)
+	case "query_star_notices":
+		q := strings.TrimSpace(strArg(action.Args, "q"))
+		if q == "" {
+			return a.queryMaps("SELECT title, author, content FROM StarNotice ORDER BY title ASC LIMIT 20")
+		}
+		kw := "%" + q + "%"
+		return a.queryMaps("SELECT title, author, content FROM StarNotice WHERE title LIKE ? OR author LIKE ? OR content LIKE ? ORDER BY title ASC LIMIT 20", kw, kw, kw)
+	case "search_all":
+		q := strings.TrimSpace(strArg(action.Args, "q"))
+		if q == "" {
+			return nil, errors.New("请提供搜索关键词")
+		}
+		kw := "%" + q + "%"
+		users, err := a.queryMaps("SELECT uid, name, email, nick, role FROM `user` WHERE name LIKE ? OR email LIKE ? OR nick LIKE ? OR CAST(uid AS CHAR) LIKE ? ORDER BY uid ASC LIMIT 10", kw, kw, kw, kw)
+		if err != nil {
+			return nil, err
+		}
+		dynamics, err := a.queryMaps("SELECT d.id, d.uid, u.name, d.content, d.status, d.create_time FROM `dynamic` d LEFT JOIN `user` u ON d.uid = u.uid WHERE d.content LIKE ? OR u.name LIKE ? OR CAST(d.uid AS CHAR) LIKE ? ORDER BY d.id DESC LIMIT 10", kw, kw, kw)
+		if err != nil {
+			return nil, err
+		}
+		logs, err := a.queryMaps("SELECT id, module, action, summary, operator, create_time FROM admin_operation_log WHERE summary LIKE ? OR operator LIKE ? OR module LIKE ? OR action LIKE ? ORDER BY id DESC LIMIT 10", kw, kw, kw, kw)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"keyword": q, "users": users, "dynamics": dynamics, "logs": logs}, nil
+	case "batch_hide_dynamics_by_keyword":
+		q := strings.TrimSpace(strArg(action.Args, "q"))
+		if q == "" {
+			return nil, errors.New("批量隐藏必须提供关键词")
+		}
+		kw := "%" + q + "%"
+		preview, err := a.queryMaps("SELECT id, uid, content, status FROM `dynamic` WHERE content LIKE ? AND status <> 2 ORDER BY id DESC LIMIT 50", kw)
+		if err != nil {
+			return nil, err
+		}
+		res, err := a.db.Exec("UPDATE `dynamic` SET status = 2 WHERE content LIKE ? AND status <> 2", kw)
+		if err != nil {
+			return nil, err
+		}
+		n := int(affected(res))
+		a.logOperation(r, operator, "ai", "batch_hide_dynamics", "dynamic", "", nil, fmt.Sprintf("AI 批量隐藏含 \"%s\" 的动态 %d 条", q, n), action.Args)
+		return map[string]any{"ok": true, "affected": n, "preview": preview}, nil
+	case "update_user_role":
+		uid := intArg(action.Args, "uid")
+		role := intArg(action.Args, "role")
+		if uid <= 0 || role < 0 {
+			return nil, errors.New("UID 或角色参数不正确")
+		}
+		operatorUID, operatorRole, targetRole, err := a.getOperatorAndTarget(operator, uid)
+		if err != nil {
+			return nil, errors.New("用户不存在")
+		}
+		if operatorUID == uid {
+			return nil, errors.New("不能修改自己的角色")
+		}
+		if targetRole >= operatorRole {
+			return nil, errors.New("不能修改权限高于或等于自己的账号")
+		}
+		if role >= operatorRole {
+			return nil, errors.New("不能将角色提升到等于或高于自己")
+		}
+		res, err := a.db.Exec("UPDATE `user` SET role = ? WHERE uid = ?", role, uid)
+		if err != nil {
+			return nil, err
+		}
+		a.logOperation(r, operator, "ai", "update_user_role", "user", strconv.Itoa(uid), &uid, fmt.Sprintf("AI 修改 UID %d 角色 %d -> %d", uid, targetRole, role), action.Args)
+		return map[string]any{"ok": affected(res) > 0, "uid": uid, "role": role}, nil
 	default:
 		return nil, errors.New("AI 动作不支持：" + action.Name)
 	}

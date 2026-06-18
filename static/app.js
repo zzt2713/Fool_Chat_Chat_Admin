@@ -1714,15 +1714,50 @@ async function sendAIMessage(confirm = false) {
 
 function handleClientAIAction(action) {
   if (!action || !action.name) return;
-  if (action.name === "switch_wallpaper") {
-    refreshBg();
-  } else if (action.name === "set_theme") {
-    const mode = action.args && action.args.mode;
-    if (mode === "toggle") {
-      setTheme(document.body.classList.contains("dark") ? "light" : "dark");
-    } else if (mode === "dark" || mode === "light") {
-      setTheme(mode);
+  const args = action.args || {};
+  switch (action.name) {
+    case "switch_wallpaper":
+      refreshBg();
+      break;
+    case "set_theme": {
+      const mode = args.mode;
+      if (mode === "toggle") {
+        setTheme(document.body.classList.contains("dark") ? "light" : "dark");
+      } else if (mode === "dark" || mode === "light") {
+        setTheme(mode);
+      }
+      break;
     }
+    case "download_wallpaper":
+      document.getElementById("bgSaveBtn")?.click();
+      break;
+    case "upload_wallpaper":
+      document.getElementById("customBgBtn")?.click();
+      break;
+    case "toggle_bg_preview":
+      document.getElementById("bgViewBtn")?.click();
+      break;
+    case "navigate": {
+      const view = String(args.view || "").toLowerCase();
+      const allowed = ["dashboard", "users", "dynamics", "friends", "applies", "star", "notices", "ai"];
+      if (allowed.includes(view)) {
+        activateView(view);
+        refreshCurrent().catch((err) => toast(err.message, "error"));
+      } else {
+        toast("未知页面：" + (args.view || ""), "error");
+      }
+      break;
+    }
+    case "refresh_view":
+      refreshCurrent().catch((err) => toast(err.message, "error"));
+      break;
+    case "logout":
+      (async () => {
+        try { await api("/api/logout", { method: "POST" }); } catch {}
+        if (typeof showLogin === "function") showLogin();
+        else location.reload();
+      })();
+      break;
   }
 }
 
