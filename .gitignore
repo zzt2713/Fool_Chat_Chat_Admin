@@ -1,0 +1,24 @@
+# 配置（含数据库密码、二级密码、AI API Key）
+config.yaml
+
+# 编译产物
+fool_chat_admin_go
+fool_chat_admin_go.exe
+fool_chat_admin_go_linux
+*.exe
+
+# 日志
+*.log
+local-admin.err.log
+
+# 备份
+*.bak
+
+# Claude Code 本地设置
+.claude/settings.local.json
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
