@@ -296,8 +296,6 @@ ai:
   "session_id": 1718700000000
 }
 ```
-</details>
-
 ---
 
 ## 🚢 部署指南
@@ -356,13 +354,3 @@ ssh root@<server> "systemctl restart fool-chat-admin"
 - 角色权限三道防线：路由校验 → 角色校验 → 自我保护校验
 
 > 🔒 生产部署建议：使用环境变量注入密钥、配合 Nginx HTTPS 反向代理、限制 MySQL 远程访问白名单。
-
----
-
-## 🗺 路线图
-
-- [ ] 多实例 Session 共享（Redis 后端）
-- [ ] 操作日志的细粒度权限隔离
-- [ ] AI 动作扩展：好友关系治理、批量通知模板
-- [ ] WebSocket 实时推送审核任务
-- [ ] 国际化（i18n）支持
