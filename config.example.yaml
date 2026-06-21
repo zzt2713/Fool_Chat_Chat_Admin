@@ -19,3 +19,20 @@ ai:
   api_key: ""
   # 模型名，默认 deepseek-chat
   model: ""
+
+redis:
+  # 验证码使用的 Redis（与验证码服务共用）
+  host: ""
+  port: ""
+  password: ""
+
+verify_server:
+  # 验证码 gRPC 服务地址 host:port
+  addr: ""
+
+services:
+  # 分布式 IM 服务 TCP 探活地址
+  gate_server: 127.0.0.1:8080
+  status_server: 127.0.0.1:50052
+  chat_server1: 127.0.0.1:8090
+  chat_server2: 127.0.0.1:8091

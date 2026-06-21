@@ -1,5 +1,7 @@
-const titles = {
+﻿const titles = {
   dashboard: ["概览", "后台数据与快捷操作"],
+  monitor: ["系统监控", "查看分布式 IM 服务与基础依赖状态"],
+  maintenance: ["数据维护", "导出备份与数据库概况"],
   users: ["用户", "查看与搜索用户"],
   dynamics: ["动态", "发布和管理动态"],
   friends: ["好友关系", "查看并删除好友关系"],
@@ -16,6 +18,11 @@ const PAGE_SIZE = 20;
 const pageState = { users: 1, dynamics: 1, friends: 1, applies: 1, star: 1, notices: 1, logs: 1 };
 const selectedIds = { users: new Set() };
 const roleLabels = { 0: "普通用户", 1: "管理员", 2: "超级管理员" };
+
+function renderOnlineStatus(row) {
+  const online = Number(row.status || 0) === 1;
+  return `<span class="online-pill ${online ? "is-online" : "is-offline"}"><span class="online-dot"></span>${online ? "\u5728\u7ebf" : "\u79bb\u7ebf"}</span>`;
+}
 const actionLabels = {
   create: "新增",
   update: "编辑",
@@ -475,7 +482,7 @@ async function loadSummary() {
   const data = await api("/api/summary");
   $("#mUsers").textContent = data.users;
   $("#mDynamics").textContent = data.dynamics;
-  $("#mApplies").textContent = data.pending_applies;
+  $("#mOnlineUsers").textContent = data.online_users ?? 0;
   $("#mNotices").textContent = data.notices;
   $("#mTotalOps").textContent = data.total_operations ?? 0;
   $("#mTodayOps").textContent = data.today_operations ?? 0;
@@ -666,6 +673,96 @@ async function loadAnalytics() {
   renderAnalytics(data);
 }
 
+function renderServiceState(item) {
+  const online = !!item.online;
+  return `<span class="online-pill ${online ? "is-online" : "is-offline"}"><span class="online-dot"></span>${online ? "在线" : "异常"}</span>`;
+}
+
+function renderServiceCard(item) {
+  const online = !!item.online;
+  const latency = item.latency_ms ?? 0;
+  const users = item.online_users ?? 0;
+  return `
+    <div class="monitor-card ${online ? "is-online" : "is-offline"}">
+      <div class="monitor-card-head">
+        <strong>${escapeHtml(item.name || "-")}</strong>
+        ${renderServiceState(item)}
+      </div>
+      <p>${escapeHtml(item.kind || "")}</p>
+      <div class="monitor-card-meta">
+        <span>${escapeHtml(item.addr || "-")}</span>
+        <span>${latency} ms</span>
+        ${String(item.name || "").startsWith("ChatServer") ? `<span>${users} 人在线</span>` : ""}
+      </div>
+      ${item.error ? `<div class="monitor-error">${escapeHtml(item.error)}</div>` : ""}
+    </div>
+  `;
+}
+
+async function loadServiceStatus() {
+  const data = await api("/api/service-status");
+  const services = data.services || [];
+  const depends = data.depends || [];
+  const onlineServices = services.filter((s) => s.online).length;
+  const onlineDepends = depends.filter((s) => s.online).length;
+  $("#mServiceOnline").textContent = `${onlineServices}/${services.length}`;
+  $("#mServiceOffline").textContent = services.length - onlineServices;
+  $("#mMonitorOnlineUsers").textContent = data.total_online ?? 0;
+  $("#mDependOnline").textContent = `${onlineDepends}/${depends.length}`;
+  $("#mDependOffline").textContent = depends.length - onlineDepends;
+  $("#mMonitorRefresh").textContent = new Date().toLocaleTimeString("zh-CN");
+  $("#serviceCards").innerHTML = [...services, ...depends].map(renderServiceCard).join("");
+
+  const columns = [
+    { key: "name", label: "名称", sortable: true },
+    { key: "kind", label: "类型" },
+    { key: "addr", label: "地址" },
+    { key: "online", label: "状态", render: renderServiceState },
+    { key: "latency_ms", label: "延迟(ms)", sortable: true },
+    { key: "online_users", label: "在线人数", sortable: true, render: (r) => r.online_users ?? "-" },
+    { key: "error", label: "异常信息", render: (r) => r.error ? `<span class="danger-text">${escapeHtml(r.error)}</span>` : "-" },
+  ];
+  renderTable($("#serviceStatusTable"), columns, services, { viewKey: "monitor_services" });
+  renderTable($("#dependStatusTable"), columns.filter((c) => c.key !== "online_users"), depends, { viewKey: "monitor_depends" });
+}
+
+async function loadMaintenance() {
+  const data = await api("/api/maintenance/summary");
+  const counts = data.counts || {};
+  $("#bkUsers").textContent = counts.users ?? 0;
+  $("#bkDynamics").textContent = counts.dynamics ?? 0;
+  $("#bkLogs").textContent = counts.logs ?? 0;
+  $("#bkFriends").textContent = counts.friends ?? 0;
+  $("#bkApplies").textContent = counts.friend_applies ?? 0;
+  $("#bkNotices").textContent = counts.admin_notices ?? 0;
+
+  const db = data.database || {};
+  renderTable($("#maintenanceDbTable"), [
+    { key: "label", label: "配置项" },
+    { key: "value", label: "当前值" },
+  ], [
+    { label: "数据库类型", value: db.driver || "mysql" },
+    { label: "连接地址", value: `${db.host || "-"}:${db.port || "-"}` },
+    { label: "数据库名", value: db.name || "-" },
+    { label: "连接用户", value: db.user || "-" },
+    { label: "检查时间", value: data.checked_at || "-" },
+  ], { viewKey: "maintenance_db" });
+
+  renderTable($("#maintenanceCountTable"), [
+    { key: "name", label: "数据表" },
+    { key: "count", label: "当前数量", sortable: true },
+  ], [
+    { name: "用户 user", count: counts.users ?? 0 },
+    { name: "动态 dynamic", count: counts.dynamics ?? 0 },
+    { name: "操作日志 admin_operation_log", count: counts.logs ?? 0 },
+    { name: "好友关系 friend", count: counts.friends ?? 0 },
+    { name: "好友申请 friend_apply", count: counts.friend_applies ?? 0 },
+    { name: "后台通知 admin_notice", count: counts.admin_notices ?? 0 },
+    { name: "公告 StarNotice", count: counts.star_notices ?? 0 },
+    { name: "AI 会话 ai_chat_message", count: counts.ai_messages ?? 0 },
+  ], { viewKey: "maintenance_counts" });
+}
+
 async function loadUsers() {
   const q = encodeURIComponent(($("#userSearch")?.value || "").trim());
   const rows = await api(`/api/users?q=${q}&page=${pageState.users}&limit=${PAGE_SIZE}`);
@@ -678,6 +775,7 @@ async function loadUsers() {
     { key: "icon", label: "头像" },
     { key: "role", label: "角色", sortable: true, render: (r) => `<span class="role-pill role-${Number(r.role || 0)}">${roleLabels[Number(r.role || 0)] || "普通用户"}</span>` },
     { key: "desc", label: "签名" },
+    { key: "status", label: "在线状态", sortable: true, render: renderOnlineStatus },
     {
       label: "操作",
       className: "action-cell user-actions-cell",
@@ -808,6 +906,8 @@ async function doRefreshCurrent() {
     await loadAnalytics();
     loadLogOperators().catch(() => {});
   }
+  if (currentView === "monitor") await loadServiceStatus();
+  if (currentView === "maintenance") await loadMaintenance();
   if (currentView === "users") await loadUsers();
   if (currentView === "dynamics") await loadDynamics();
   if (currentView === "friends") await loadFriends();
@@ -852,6 +952,10 @@ $("#refreshBtn").addEventListener("click", () => {
   refreshCurrent().catch((err) => toast(err.message, "error"));
 });
 
+$("#monitorRefreshBtn")?.addEventListener("click", () => {
+  loadServiceStatus().catch((err) => toast(err.message, "error"));
+});
+
 // 壁纸
 async function refreshBg() {
   const btn = $("#bgBtn");
@@ -881,17 +985,72 @@ function loadSavedBg() {
   }
 }
 
-// 自定义背景上传
-$("#customBgBtn").addEventListener("click", () => $("#bgUploadInput").click());
+function applyBackgroundUrl(url, message = "自定义背景已应用") {
+  const value = String(url || "").trim();
+  if (!value) {
+    toast("请输入图片 URL", "error");
+    return false;
+  }
+  if (!/^https?:\/\//i.test(value) && !value.startsWith("data:image/")) {
+    toast("图片 URL 需要以 http:// 或 https:// 开头", "error");
+    return false;
+  }
+  document.body.style.backgroundImage = `url("${value.replace(/"/g, "%22")}")`;
+  localStorage.setItem("mhkh_bg_url", value);
+  toast(message, "success");
+  return true;
+}
+
+function openBgSourceModal() {
+  $("#bgSourceOverlay")?.classList.add("show");
+  $("#bgUrlInput")?.focus();
+}
+
+function closeBgSourceModal() {
+  $("#bgSourceOverlay")?.classList.remove("show");
+}
+
+// 自定义背景：支持本地上传或网络 URL
+$("#customBgBtn").addEventListener("click", openBgSourceModal);
+$("#bgSourceCancelBtn")?.addEventListener("click", closeBgSourceModal);
+$("#bgSourceOverlay")?.addEventListener("click", (e) => {
+  if (e.target.id === "bgSourceOverlay") closeBgSourceModal();
+});
+$("#bgLocalBtn")?.addEventListener("click", () => {
+  closeBgSourceModal();
+  $("#bgUploadInput").click();
+});
+$("#bgRandomBtn")?.addEventListener("click", async () => {
+  closeBgSourceModal();
+  await refreshBg();
+});
+$("#bgClearBtn")?.addEventListener("click", () => {
+  document.body.style.backgroundImage = "";
+  localStorage.removeItem("mhkh_bg_url");
+  closeBgSourceModal();
+  toast("背景已清除", "success");
+});
+$("#bgUrlApplyBtn")?.addEventListener("click", () => {
+  const ok = applyBackgroundUrl($("#bgUrlInput")?.value, "URL 背景已应用");
+  if (ok) closeBgSourceModal();
+});
+$("#bgUrlInput")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    $("#bgUrlApplyBtn")?.click();
+  }
+});
 $("#bgUploadInput").addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    toast("请选择图片文件", "error");
+    e.target.value = "";
+    return;
+  }
   const reader = new FileReader();
   reader.onload = (ev) => {
-    const dataUrl = ev.target.result;
-    document.body.style.backgroundImage = `url("${dataUrl}")`;
-    localStorage.setItem("mhkh_bg_url", dataUrl);
-    toast("自定义背景已应用", "success");
+    applyBackgroundUrl(ev.target.result, "本地背景已应用");
   };
   reader.onerror = () => toast("读取图片失败", "error");
   reader.readAsDataURL(file);
@@ -1053,10 +1212,11 @@ $("#exportUsers")?.addEventListener("click", async () => {
   try {
     const q = encodeURIComponent(($("#userSearch")?.value || "").trim());
     const rows = await fetchAll(`/api/users?q=${q}`);
+    rows.forEach((r) => { r.statusText = Number(r.status || 0) === 1 ? "在线" : "离线"; });
     exportXlsx("用户列表.xlsx", [
       { key: "uid", label: "UID" }, { key: "name", label: "用户名" },
       { key: "email", label: "邮箱" }, { key: "nick", label: "昵称" },
-      { key: "sex", label: "性别" }, { key: "desc", label: "签名" },
+      { key: "sex", label: "性别" }, { key: "desc", label: "签名" }, { key: "statusText", label: "在线状态" },
     ], rows);
   } catch (err) { toast(err.message || "导出失败", "error"); }
 });
@@ -1135,6 +1295,78 @@ $("#exportNotices")?.addEventListener("click", async () => {
       { key: "create_time", label: "时间" },
     ], rows);
   } catch (err) { toast(err.message || "导出失败", "error"); }
+});
+
+function downloadMaintenance(type) {
+  window.location.href = `/api/maintenance/export?type=${encodeURIComponent(type)}`;
+}
+
+function appendSheet(wb, sheetName, headers, rows) {
+  const data = [headers.map((h) => h.label)];
+  rows.forEach((r) => data.push(headers.map((h) => r[h.key] ?? "")));
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+}
+
+async function exportAllMaintenanceExcel() {
+  const [users, dynamics, logs] = await Promise.all([
+    fetchAll("/api/users"),
+    fetchAll("/api/dynamics"),
+    fetchAll("/api/logs"),
+  ]);
+  const statusMap = { 0: "正常", 1: "审核中", 2: "违规隐藏" };
+  users.forEach((r) => {
+    r.roleText = roleLabels[Number(r.role || 0)] || "普通用户";
+    r.statusText = Number(r.status || 0) === 1 ? "在线" : "离线";
+  });
+  dynamics.forEach((r) => {
+    r.statusText = statusMap[Number(r.status || 0)] || "未知";
+    r.create_time = formatDateTime(r.create_time);
+  });
+  logs.forEach((r) => {
+    r.action = formatAction(r.action);
+    r.create_time = formatDateTime(r.create_time);
+  });
+  const wb = XLSX.utils.book_new();
+  appendSheet(wb, "用户", [
+    { key: "uid", label: "UID" },
+    { key: "name", label: "用户名" },
+    { key: "email", label: "邮箱" },
+    { key: "nick", label: "昵称" },
+    { key: "roleText", label: "角色" },
+    { key: "statusText", label: "在线状态" },
+  ], users);
+  appendSheet(wb, "动态", [
+    { key: "id", label: "ID" },
+    { key: "uid", label: "UID" },
+    { key: "name", label: "用户" },
+    { key: "content", label: "内容" },
+    { key: "like_count", label: "点赞数" },
+    { key: "statusText", label: "状态" },
+    { key: "create_time", label: "时间" },
+  ], dynamics);
+  appendSheet(wb, "日志", [
+    { key: "id", label: "ID" },
+    { key: "module", label: "模块" },
+    { key: "action", label: "操作" },
+    { key: "summary", label: "说明" },
+    { key: "user", label: "操作人" },
+    { key: "ip", label: "IP" },
+    { key: "create_time", label: "时间" },
+  ], logs);
+  XLSX.writeFile(wb, `FoolChat数据备份_${Date.now()}.xlsx`);
+  toast("备份已导出", "success");
+}
+
+$("#backupUsersCsv")?.addEventListener("click", () => downloadMaintenance("users"));
+$("#backupDynamicsCsv")?.addEventListener("click", () => downloadMaintenance("dynamics"));
+$("#backupLogsCsv")?.addEventListener("click", () => downloadMaintenance("logs"));
+$("#backupAllCsv")?.addEventListener("click", () => downloadMaintenance("all"));
+$("#backupAllExcel")?.addEventListener("click", async () => {
+  try { await exportAllMaintenanceExcel(); } catch (err) { toast(err.message || "导出失败", "error"); }
+});
+$("#maintenanceRefreshBtn")?.addEventListener("click", () => {
+  loadMaintenance().then(() => toast("数据维护信息已刷新", "success")).catch((err) => toast(err.message, "error"));
 });
 // ---- Batch operations ----
 function updateBatchBar() {
@@ -1428,6 +1660,180 @@ $("#logoutBtn")?.addEventListener("click", async () => {
   showLogin();
 });
 
+(function setupForgotPassword() {
+  const overlay = $("#forgotModalOverlay");
+  if (!overlay) return;
+  const openBtn = $("#forgotPwdBtn");
+  const cancelBtn = $("#forgotCancelBtn");
+  const prevBtn = $("#forgotPrevBtn");
+  const nextBtn = $("#forgotNextBtn");
+  const sendBtn = $("#forgotSendBtn");
+  const nameInput = $("#forgotName");
+  const codeInput = $("#forgotCode");
+  const pwd1Input = $("#forgotPwd1");
+  const pwd2Input = $("#forgotPwd2");
+  const maskedEmailEl = $("#forgotMaskedEmail");
+  const stepTips = {
+    1: $("#forgotStep1Tip"),
+    2: $("#forgotStep2Tip"),
+    3: $("#forgotStep3Tip"),
+  };
+  const stepNodes = overlay.querySelectorAll(".forgot-step");
+  const stepLabels = overlay.querySelectorAll(".forgot-steps .step");
+
+  let state = { step: 1, name: "", maskedEmail: "", sendCooldown: 0, sending: false };
+  let cooldownTimer = null;
+
+  function setTip(step, text, isError) {
+    const el = stepTips[step];
+    if (!el) return;
+    el.textContent = text || "";
+    el.classList.toggle("is-error", !!isError);
+  }
+
+  function showStep(step) {
+    state.step = step;
+    stepNodes.forEach((node) => {
+      node.style.display = Number(node.dataset.step) === step ? "" : "none";
+    });
+    stepLabels.forEach((label) => {
+      label.classList.toggle("active", Number(label.dataset.step) === step);
+    });
+    prevBtn.style.display = step === 1 ? "none" : "";
+    nextBtn.textContent = step === 3 ? "重置密码" : "下一步";
+    setTip(1, ""); setTip(2, ""); setTip(3, "");
+  }
+
+  function openModal() {
+    state = { step: 1, name: "", maskedEmail: "", sendCooldown: 0, sending: false };
+    nameInput.value = "";
+    codeInput.value = "";
+    pwd1Input.value = "";
+    pwd2Input.value = "";
+    maskedEmailEl.textContent = "--";
+    sendBtn.disabled = false;
+    sendBtn.textContent = "发送验证码";
+    if (cooldownTimer) { clearInterval(cooldownTimer); cooldownTimer = null; }
+    showStep(1);
+    overlay.classList.add("show");
+    setTimeout(() => nameInput.focus(), 30);
+  }
+
+  function closeModal() {
+    overlay.classList.remove("show");
+    if (cooldownTimer) { clearInterval(cooldownTimer); cooldownTimer = null; }
+  }
+
+  function startCooldown(seconds) {
+    state.sendCooldown = seconds;
+    sendBtn.disabled = true;
+    sendBtn.textContent = `${seconds}s 后重发`;
+    if (cooldownTimer) clearInterval(cooldownTimer);
+    cooldownTimer = setInterval(() => {
+      state.sendCooldown -= 1;
+      if (state.sendCooldown <= 0) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = null;
+        sendBtn.disabled = false;
+        sendBtn.textContent = "重新发送";
+      } else {
+        sendBtn.textContent = `${state.sendCooldown}s 后重发`;
+      }
+    }, 1000);
+  }
+
+  async function handleNext() {
+    if (state.step === 1) {
+      const name = nameInput.value.trim();
+      if (!name) { setTip(1, "请输入账号", true); return; }
+      try {
+        nextBtn.disabled = true;
+        const data = await api("/api/password-reset/lookup", {
+          method: "POST",
+          body: JSON.stringify({ name }),
+          skipLoading: true,
+        });
+        state.name = name;
+        state.maskedEmail = data.masked_email || "";
+        maskedEmailEl.textContent = state.maskedEmail || "--";
+        showStep(2);
+      } catch (err) {
+        setTip(1, err.message || "账号查询失败", true);
+      } finally {
+        nextBtn.disabled = false;
+      }
+      return;
+    }
+    if (state.step === 2) {
+      const code = codeInput.value.trim();
+      if (!code) { setTip(2, "请输入验证码", true); return; }
+      showStep(3);
+      setTimeout(() => pwd1Input.focus(), 30);
+      return;
+    }
+    if (state.step === 3) {
+      const code = codeInput.value.trim();
+      const pwd1 = pwd1Input.value;
+      const pwd2 = pwd2Input.value;
+      if (pwd1.length < 6) { setTip(3, "新密码至少 6 位", true); return; }
+      if (pwd1 !== pwd2) { setTip(3, "两次输入的密码不一致", true); return; }
+      try {
+        nextBtn.disabled = true;
+        await api("/api/password-reset/reset", {
+          method: "POST",
+          body: JSON.stringify({ name: state.name, code, password: pwd1 }),
+          skipLoading: true,
+        });
+        toast("密码已重置，请使用新密码登录", "success");
+        closeModal();
+      } catch (err) {
+        setTip(3, err.message || "重置失败", true);
+      } finally {
+        nextBtn.disabled = false;
+      }
+    }
+  }
+
+  async function handleSend() {
+    if (state.sending || sendBtn.disabled) return;
+    if (!state.name) { setTip(2, "账号信息丢失，请返回上一步", true); return; }
+    state.sending = true;
+    sendBtn.disabled = true;
+    const originalText = sendBtn.textContent;
+    sendBtn.textContent = "发送中...";
+    try {
+      const data = await api("/api/password-reset/send", {
+        method: "POST",
+        body: JSON.stringify({ name: state.name }),
+        skipLoading: true,
+      });
+      if (data.masked_email) {
+        state.maskedEmail = data.masked_email;
+        maskedEmailEl.textContent = state.maskedEmail;
+      }
+      setTip(2, "验证码已发送，请查收邮箱", false);
+      startCooldown(60);
+    } catch (err) {
+      setTip(2, err.message || "发送失败", true);
+      sendBtn.disabled = false;
+      sendBtn.textContent = originalText;
+    } finally {
+      state.sending = false;
+    }
+  }
+
+  openBtn?.addEventListener("click", openModal);
+  cancelBtn?.addEventListener("click", closeModal);
+  prevBtn?.addEventListener("click", () => {
+    if (state.step > 1) showStep(state.step - 1);
+  });
+  nextBtn?.addEventListener("click", handleNext);
+  sendBtn?.addEventListener("click", handleSend);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeModal();
+  });
+})();
+
 (async () => {
   try {
     const res = await fetch("/api/summary", { headers: { "Content-Type": "application/json" } });
@@ -1602,6 +2008,9 @@ function renderAIResult(result) {
       }
       return tag;
     }
+    if (isGroupedAIResult(result)) {
+      return buildAIGroupedResult(result);
+    }
     return buildAITable([result]);
   }
   if (Array.isArray(result)) {
@@ -1620,7 +2029,158 @@ function renderAIResult(result) {
   return pre;
 }
 
-function buildAITable(rows) {
+const aiColumnLabels = {
+  id: "ID",
+  uid: "UID",
+  name: "账号",
+  email: "邮箱",
+  nick: "昵称",
+  desc: "描述",
+  sex: "性别",
+  icon: "头像",
+  role: "角色",
+  status: "状态",
+  content: "内容",
+  like_count: "点赞数",
+  create_time: "时间",
+  module: "模块",
+  action: "操作",
+  summary: "说明",
+  operator: "操作人",
+  target_uid: "目标 UID",
+  target_name: "目标账号",
+  title: "标题",
+  author: "作者",
+  level: "等级",
+  delivered: "投递状态",
+  from_uid: "申请方 UID",
+  from_name: "申请方",
+  to_uid: "接收方 UID",
+  to_name: "接收方",
+  back_name: "备注",
+  self_id: "用户 UID",
+  self_name: "用户账号",
+  self_nick: "用户昵称",
+  friend_id: "好友 UID",
+  friend_name: "好友账号",
+  friend_nick: "好友昵称",
+  back: "备注",
+  users: "用户",
+  dynamics: "动态",
+  today_dynamics: "今日动态",
+  pending_dynamics: "待审核动态",
+  today_users: "今日新增用户",
+  today_operations: "今日操作",
+  total_operations: "累计操作",
+  pending_applies: "待处理申请",
+  notices: "通知",
+  keyword: "关键词",
+  affected: "影响数量",
+  preview: "预览数据",
+  star_notices: "公告",
+  groups: "待审分组",
+  report: "运营日报",
+  errors: "异常操作",
+  online_users: "在线用户",
+  pending_count: "待审数量",
+  total_users: "用户总数",
+  total_dynamics: "动态总数",
+  total_logs: "日志总数",
+  today_logins: "今日登录",
+  today_errors: "今日异常",
+};
+
+const aiGroupLabels = {
+  users: "用户结果",
+  dynamics: "动态结果",
+  logs: "日志结果",
+  notices: "通知结果",
+  star_notices: "公告结果",
+  groups: "待审动态分组",
+  errors: "异常操作",
+  preview: "预览数据",
+};
+
+function isGroupedAIResult(result) {
+  return Object.keys(aiGroupLabels).some((key) => Array.isArray(result[key]));
+}
+
+function buildAIGroupedResult(result) {
+  const wrap = document.createElement("div");
+  wrap.className = "ai-grouped-result";
+  for (const [key, label] of Object.entries(aiGroupLabels)) {
+    if (!Array.isArray(result[key])) continue;
+    const section = document.createElement("div");
+    section.className = "ai-result-section";
+    const title = document.createElement("h4");
+    title.textContent = `${label}（${result[key].length}）`;
+    section.appendChild(title);
+    if (result[key].length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "ai-empty-state";
+      empty.textContent = "暂无匹配数据";
+      section.appendChild(empty);
+    } else {
+      section.appendChild(buildAITable(result[key], key));
+    }
+    wrap.appendChild(section);
+  }
+  return wrap;
+}
+
+function getAIStatusLabel(value, row = {}, context = "") {
+  const status = Number(value);
+  const isUserRow = context === "users" || (("role" in row || "email" in row || "nick" in row) && !("content" in row));
+  const isDynamicRow = context === "dynamics" || "like_count" in row || ("content" in row && "uid" in row && !("title" in row));
+  const isApplyRow = context === "friend_applies" || ("from_uid" in row && "to_uid" in row);
+  if (isUserRow) return status === 1 ? "在线" : "离线";
+  if (isApplyRow) {
+    if (status === 0) return "待处理";
+    if (status === 1) return "已通过";
+    if (status === 2) return "已拒绝";
+    return String(value);
+  }
+  if (isDynamicRow) {
+    if (status === 0) return "正常";
+    if (status === 1) return "审核中";
+    if (status === 2) return "违规隐藏";
+    return String(value);
+  }
+  return String(value);
+}
+
+function formatAICellValue(key, value, row = {}, context = "") {
+  if (value === null || value === undefined) return "";
+  if (key === "role") {
+    const role = Number(value);
+    if (role === 2) return "超级管理员";
+    if (role === 1) return "管理员";
+    return "普通用户";
+  }
+  if (key === "status") {
+    return getAIStatusLabel(value, row, context);
+  }
+  if (key === "delivered") {
+    return Number(value) === 1 ? "已处理" : "未处理";
+  }
+  if (key === "level") {
+    const labels = { info: "普通", success: "成功", warning: "警告", error: "错误" };
+    return labels[String(value)] || String(value);
+  }
+  if (key === "sex") {
+    const sex = Number(value);
+    if (sex === 1) return "男";
+    if (sex === 2) return "女";
+    return "未知";
+  }
+  if (key === "create_time") {
+    return formatDateTime(value);
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function buildAITable(rows, context = "") {
   const wrap = document.createElement("div");
   wrap.style.overflowX = "auto";
   wrap.style.marginTop = "8px";
@@ -1631,7 +2191,7 @@ function buildAITable(rows) {
   const trh = document.createElement("tr");
   for (const k of keys) {
     const th = document.createElement("th");
-    th.textContent = k;
+    th.textContent = aiColumnLabels[k] || k;
     trh.appendChild(th);
   }
   thead.appendChild(trh);
@@ -1641,10 +2201,7 @@ function buildAITable(rows) {
     const tr = document.createElement("tr");
     for (const k of keys) {
       const td = document.createElement("td");
-      let v = r[k];
-      if (v === null || v === undefined) v = "";
-      else if (typeof v === "object") v = JSON.stringify(v);
-      td.textContent = String(v);
+      td.textContent = formatAICellValue(k, r[k], r, context);
       tr.appendChild(td);
     }
     tbody.appendChild(tr);
@@ -1709,6 +2266,9 @@ async function sendAIMessage(confirm = false) {
   } finally {
     if (thinkingEl && thinkingEl.parentNode) thinkingEl.remove();
     setAISending(false);
+    if (!aiPendingAction && currentView === "ai") {
+      setTimeout(() => { try { input.focus(); } catch {} }, 0);
+    }
   }
 }
 
@@ -1734,12 +2294,18 @@ function handleClientAIAction(action) {
     case "upload_wallpaper":
       document.getElementById("customBgBtn")?.click();
       break;
+    case "clear_wallpaper":
+      document.getElementById("bgClearBtn")?.click();
+      break;
+    case "set_wallpaper_url":
+      if (args.url) applyBackgroundUrl(args.url, "URL 背景已应用");
+      break;
     case "toggle_bg_preview":
       document.getElementById("bgViewBtn")?.click();
       break;
     case "navigate": {
       const view = String(args.view || "").toLowerCase();
-      const allowed = ["dashboard", "users", "dynamics", "friends", "applies", "star", "notices", "ai"];
+      const allowed = ["dashboard", "monitor", "maintenance", "users", "dynamics", "friends", "applies", "star", "notices", "ai"];
       if (allowed.includes(view)) {
         activateView(view);
         refreshCurrent().catch((err) => toast(err.message, "error"));
@@ -1844,6 +2410,23 @@ document.getElementById("aiInput")?.addEventListener("keydown", (e) => {
     e.preventDefault();
     sendAIMessage(false).catch((err) => appendAIMessage("assistant", err.message, null, { instant: true }));
   }
+});
+
+document.querySelectorAll(".ai-help-item").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const tpl = btn.getAttribute("data-template") || "";
+    if (!tpl) return;
+    const input = document.getElementById("aiInput");
+    if (!input) return;
+    input.value = tpl;
+    input.focus();
+    const match = /\[[^\]]+\]/.exec(tpl);
+    if (match) {
+      input.setSelectionRange(match.index, match.index + match[0].length);
+    } else {
+      input.setSelectionRange(tpl.length, tpl.length);
+    }
+  });
 });
 
 document.getElementById("aiConfirmAction")?.addEventListener("click", () => {

@@ -14,7 +14,7 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 		(SELECT COUNT(*) FROM admin_operation_log WHERE module = 'user' AND action = 'create' AND DATE(create_time) = CURDATE()) AS today_users,
 		(SELECT COUNT(*) FROM admin_operation_log WHERE DATE(create_time) = CURDATE()) AS today_operations,
 		(SELECT COUNT(*) FROM admin_operation_log) AS total_operations,
-		(SELECT COUNT(*) FROM friend_apply WHERE status = 0) AS pending_applies,
+		(SELECT COUNT(*) FROM ` + "`user`" + ` WHERE status = 1) AS online_users,
 		(SELECT COUNT(*) FROM admin_notice) AS notices,
 		(SELECT COUNT(*) FROM ai_chat_message WHERE role = 'user' AND DATE(create_time) = CURDATE()) AS today_ai_chats`)
 	if err != nil {

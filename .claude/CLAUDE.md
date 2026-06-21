@@ -38,6 +38,8 @@ go run .
 | `log.go` | `logOperation()` 写审计日志到 `admin_operation_log` |
 | `util.go` | 通用工具：`writeJSON` / `writeErr` / `decodeJSON` / `queryMaps` / `intArg` / `strArg` 等 |
 | `handler_*.go` | 各功能 handler |
+| `handler_password_reset.go` | 找回密码三步接口（lookup / send / reset） |
+| `verify_client.go` | 调外部 gRPC 验证码服务（`VarifyService.GetVarifyCode`）的轻量 client |
 | `templates/index.html` | 单页前端 |
 | `static/app.js` | 原生 JS，无构建，无框架 |
 | `static/app.css` | 样式 |
@@ -61,6 +63,37 @@ go run .
 - 不能操作权限 ≥ 自己的人（`targetRole >= operatorRole`）
 
 **二级密码**：删用户级别的高危操作要校验 `cfg.DeletePassword`，前端会弹密码框收集。
+
+## 找回密码（handler_password_reset.go）
+
+登录页「忘记密码？」走三步：账号 → 邮箱验证码 → 新密码。三个**免登录**接口（`/api/password-reset/lookup|send|reset`），在 `main.go:api()` 里**必须放在 currentUser 校验之前**。
+
+链路：
+1. `lookup` 按 `user.name` 查 `email`、返回脱敏邮箱（`maskEmail` 保留前 2 字符）
+2. `send` 通过 gRPC 调 VarifyServer 的 `GetVarifyCode(email)`；VarifyServer 自己把验证码写到 Redis `code_<email>`（TTL 600s）
+3. `reset` 后端再去 Redis 读 `code_<email>` 校验（大小写无关，`EqualFold`），通过后 SHA256 重写 `user.pwd`，删 key，写审计
+
+**Redis / 验证码 key 必须和 VarifyServer 端一致**：`code_<完整邮箱>`，前缀来自 `VarifyServer/const.js`。两边连同一个 Redis 实例，否则查不到。
+
+## 验证码服务 VarifyServer（不属于本仓库）
+
+- 源码：`D:\study\boostasio\VarifyServer`（本地 Windows 工作目录；Node.js gRPC + nodemailer）
+- proto：`message.VarifyService.GetVarifyCode(email) → {error, email, code}`
+- 部署：`/opt/VarifyServer`（39.104.80.114）；systemd unit `varify.service` 跑 `node server.js`，监听 `0.0.0.0:50051`
+- 日志：`/var/log/varify.log`
+- 阿里云安全组需放行 `50051/TCP`
+- **不要改 VarifyServer 代码**——本仓库只负责调用它
+
+config.yaml 相关字段：
+```yaml
+redis:
+  host: 39.104.80.114
+  port: "6380"
+  password: "123456"
+verify_server:
+  addr: 39.104.80.114:50051
+```
+`config.go` 里有同样默认值兜底，没写也能跑。
 
 ## AI 助手（handler_ai.go）的特殊架构
 
@@ -88,6 +121,30 @@ AI 不直接写 SQL。它选一个**预定义动作**，参数填到 JSON 里，
 - 当前视图刷新：`refreshCurrent()`
 - 统一请求：`api(path, opts)`，会处理 loading toast 和 401 跳登录
 - 没有构建工具，**改完直接刷新浏览器**
+- **改了 `static/*` 或 `templates/index.html` 记得 bump `index.html` 里的 `?v=` 版本号**，否则用户浏览器吃缓存
+
+### 概览指标卡（dashboard）
+
+新增/修改一张卡的清单：
+1. `templates/index.html` 的 `.metrics` 里加 `<div class="metric"><span>标题</span><strong id="mXxx">-</strong></div>`
+2. `handler_stats.go:summary` 的 SQL 加 `(SELECT ...) AS xxx` 列
+3. `static/app.js:loadSummary` 里 `$("#mXxx").textContent = data.xxx ?? 0;`
+
+> 当前指标里的「在线用户」= `SELECT COUNT(*) FROM user WHERE status = 1`（替换了原来的「待处理申请」）。AI 助手 `query_summary` 仍返回 `pending_applies` 字段，**别一起删掉**。
+
+### AI 助手「可用能力」模板按钮
+
+右侧能力面板里每个 `.ai-help-item` 带 `data-template="..."`，点击后：
+1. 模板写入 `#aiInput`
+2. 用正则 `/\[[^\]]+\]/` 匹配第一个 `[占位符]` 区段，`setSelectionRange` 选中它，让用户直接打字覆盖
+
+加新能力按钮：HTML 里追加一个 `<button class="ai-help-item" data-template="...">标题</button>` 即可，**不需要改 JS**（事件是 `querySelectorAll(".ai-help-item")` 自动绑定的）。高危项追加 `ai-help-danger` 类，会变成整行红色样式。
+
+### AI 输入框 / 发送按钮
+
+- 输入框包了一层 `.ai-input-wrap`，`textarea { resize: none }`，**不要再开拖拽角**
+- 发送按钮是蓝紫渐变，禁用态自动变灰（看 `.ai-input-row #aiSendBtn` 系列样式）
+- `sendAIMessage` 的 `finally` 里会把焦点还给 `#aiInput`，**仅当**没有 `aiPendingAction`（高危确认中）且 `currentView === "ai"`
 
 ## 安全 / 仓库
 

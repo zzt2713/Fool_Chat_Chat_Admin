@@ -154,6 +154,10 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.logout(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/api/password-reset/") {
+		a.passwordReset(w, r)
+		return
+	}
 	user, ok := a.currentUser(r)
 	if !ok {
 		writeErr(w, http.StatusUnauthorized, "未登录")
@@ -167,6 +171,10 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.summary(w, r)
 	case r.URL.Path == "/api/analytics":
 		a.analytics(w, r)
+	case r.URL.Path == "/api/service-status":
+		a.serviceStatus(w, r)
+	case strings.HasPrefix(r.URL.Path, "/api/maintenance/"):
+		a.maintenance(w, r, user)
 	case r.URL.Path == "/api/logs":
 		a.logs(w, r)
 	case r.URL.Path == "/api/log-operators":

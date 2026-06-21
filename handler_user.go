@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"fmt"
@@ -52,7 +52,7 @@ func (a *app) users(w http.ResponseWriter, r *http.Request, operator string) {
 			args = append(args, kw, kw, kw, kw)
 		}
 		args = append(args, limit, offset)
-		rows, err := a.queryMaps("SELECT id, uid, name, email, nick, `desc`, sex, icon, role FROM `user` "+where+" ORDER BY uid ASC LIMIT ? OFFSET ?", args...)
+		rows, err := a.queryMaps("SELECT id, uid, name, email, nick, `desc`, sex, icon, role, status FROM `user` "+where+" ORDER BY role DESC, uid ASC LIMIT ? OFFSET ?", args...)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
