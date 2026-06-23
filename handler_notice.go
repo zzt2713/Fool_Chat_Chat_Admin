@@ -52,7 +52,16 @@ func (a *app) friends(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, rows)
+	var total int
+	countArgs := []any{}
+	if q != "" {
+		kw := "%" + q + "%"
+		countArgs = append(countArgs, kw, kw, kw, kw, kw, kw)
+	}
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM friend f
+		LEFT JOIN `+"`user`"+` su ON f.self_id = su.uid
+		LEFT JOIN `+"`user`"+` fu ON f.friend_id = fu.uid `+where, countArgs...).Scan(&total)
+	writeJSON(w, map[string]any{"items": rows, "total": total})
 }
 
 func (a *app) friendByIDs(w http.ResponseWriter, r *http.Request, operator string) {
@@ -150,7 +159,9 @@ func (a *app) friendApplies(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, rows)
+	var total int
+	_ = a.db.QueryRow("SELECT COUNT(*) FROM friend_apply").Scan(&total)
+	writeJSON(w, map[string]any{"items": rows, "total": total})
 }
 
 func (a *app) friendApplyByID(w http.ResponseWriter, r *http.Request, operator string) {
@@ -266,7 +277,14 @@ func (a *app) starNotices(w http.ResponseWriter, r *http.Request, operator strin
 			writeErr(w, 500, err.Error())
 			return
 		}
-		writeJSON(w, rows)
+		var total int
+		countArgs := []any{}
+		if q != "" {
+			kw := "%" + q + "%"
+			countArgs = append(countArgs, kw, kw, kw)
+		}
+		_ = a.db.QueryRow("SELECT COUNT(*) FROM StarNotice "+where, countArgs...).Scan(&total)
+		writeJSON(w, map[string]any{"items": rows, "total": total})
 	case http.MethodPost:
 		var p starPayload
 		if !decodeJSON(w, r, &p) {
@@ -324,7 +342,14 @@ func (a *app) adminNotices(w http.ResponseWriter, r *http.Request, operator stri
 			writeErr(w, 500, err.Error())
 			return
 		}
-		writeJSON(w, rows)
+		var total int
+		countArgs := []any{}
+		if q != "" {
+			kw := "%" + q + "%"
+			countArgs = append(countArgs, kw, kw, kw)
+		}
+		_ = a.db.QueryRow("SELECT COUNT(*) FROM admin_notice "+where, countArgs...).Scan(&total)
+		writeJSON(w, map[string]any{"items": rows, "total": total})
 	case http.MethodPost:
 		var p noticePayload
 		if !decodeJSON(w, r, &p) {

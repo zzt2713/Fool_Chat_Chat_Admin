@@ -36,3 +36,11 @@ services:
   status_server: 127.0.0.1:50052
   chat_server1: 127.0.0.1:8090
   chat_server2: 127.0.0.1:8091
+
+smtp:
+  # 管理员申请通知邮件 SMTP 配置
+  host: ""
+  port: ""
+  user: ""
+  password: ""
+  from: ""

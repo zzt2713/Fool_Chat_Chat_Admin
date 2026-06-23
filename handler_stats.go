@@ -16,7 +16,8 @@ func (a *app) summary(w http.ResponseWriter, r *http.Request) {
 		(SELECT COUNT(*) FROM admin_operation_log) AS total_operations,
 		(SELECT COUNT(*) FROM ` + "`user`" + ` WHERE status = 1) AS online_users,
 		(SELECT COUNT(*) FROM admin_notice) AS notices,
-		(SELECT COUNT(*) FROM ai_chat_message WHERE role = 'user' AND DATE(create_time) = CURDATE()) AS today_ai_chats`)
+		(SELECT COUNT(*) FROM ai_chat_message WHERE role = 'user' AND DATE(create_time) = CURDATE()) AS today_ai_chats,
+		(SELECT COUNT(*) FROM admin_application WHERE status = 'pending') AS pending_admin_applies`)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -86,6 +87,7 @@ func (a *app) logs(w http.ResponseWriter, r *http.Request) {
 	}
 	where := whereSQL(conditions)
 	limit, offset := pageLimit(q, 30, 200)
+	countArgs := append([]any{}, args...)
 	args = append(args, limit, offset)
 	rows, err := a.queryMaps(`SELECT id, module, action, target_type, target_id, target_uid,
 		operator AS `+"`user`"+`, summary, detail_json, ip, create_time
@@ -95,7 +97,9 @@ func (a *app) logs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, rows)
+	var total int
+	_ = a.db.QueryRow("SELECT COUNT(*) FROM admin_operation_log "+where, countArgs...).Scan(&total)
+	writeJSON(w, map[string]any{"items": rows, "total": total})
 }
 
 func (a *app) logOperators(w http.ResponseWriter, r *http.Request) {

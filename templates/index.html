@@ -3,68 +3,165 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fool Chat 后台</title>
+  <title>Fool Chat 后台管理</title>
   <link rel="icon" type="image/png" href="/static/icon.png?v=2">
   <link rel="apple-touch-icon" href="/static/icon.png?v=2">
-  <link rel="stylesheet" href="/static/app.css?v=36">
+  <link rel="stylesheet" href="/static/app.css?v=74">
+  <script>
+    // 同步检测登录状态，避免已登录用户刷新时闪现登录页
+    try {
+      if (localStorage.getItem("mhkh_logged_in")) {
+        document.documentElement.classList.add("is-logged-in");
+      } else {
+        document.documentElement.classList.add("is-logged-out");
+      }
+    } catch (e) {}
+  </script>
 </head>
-<body class="logged-out">
-  <section id="loginPage" class="login-page show">
-    <div class="login-card">
-      <img class="login-logo" src="/static/icon.png?v=2" alt="MHKh">
-      <h1>Fool Chat 后台</h1>
-      <p>请使用管理员账号登录</p>
-      <form id="loginForm" novalidate>
-        <input name="name" type="text" placeholder="用户名" required autocomplete="username">
-        <div class="password-field">
-          <input id="loginPassword" name="password" type="password" placeholder="密码" required autocomplete="current-password">
-          <button id="passwordToggle" class="password-toggle" type="button" title="显示密码" aria-label="显示密码">👁</button>
+<body>
+  <section id="loginPage" class="login-page">
+    <div class="login-card" id="loginCard">
+      <div class="login-flip">
+        <div class="login-face login-face-front">
+          <aside class="login-hero">
+            <div class="login-hero-center">
+              <div class="login-hero-logo-wrap">
+                <img class="login-hero-logo" src="/static/icon.png?v=2" alt="Fool Chat">
+              </div>
+              <span class="login-hero-brand">Fool Chat</span>
+              <h2 class="login-hero-desc">欢迎使用<br>Fool Chat 管理后台</h2>
+            </div>
+            <div class="login-hero-footer">© Fool Chat · 管理员控制台</div>
+          </aside>
+
+          <div class="login-form-side">
+            <div class="login-form-head">
+              <h1>账号登录</h1>
+              <p>请使用管理员账号登录后台</p>
+            </div>
+            <form id="loginForm" novalidate>
+              <label class="login-field">
+                <span class="login-field-label">用户名</span>
+                <input name="name" type="text" placeholder="请输入管理员账号" required autocomplete="username">
+              </label>
+              <label class="login-field">
+                <span class="login-field-label">密码</span>
+                <div class="password-field">
+                  <input id="loginPassword" name="password" type="password" placeholder="请输入登录密码" required autocomplete="current-password">
+                  <button id="passwordToggle" class="password-toggle" type="button" title="显示密码" aria-label="显示密码" aria-pressed="false">
+                    <svg class="pw-icon pw-icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <svg class="pw-icon pw-icon-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 3l18 18"></path>
+                      <path d="M10.6 6.2A10.9 10.9 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3.4 4.1"></path>
+                      <path d="M6.1 7.5A17 17 0 0 0 2.5 12s3.5 6 9.5 6a10.9 10.9 0 0 0 4.2-.8"></path>
+                      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
+                    </svg>
+                  </button>
+                </div>
+              </label>
+              <p class="login-error" id="loginError"></p>
+              <button class="primary login-submit" type="submit">登 录</button>
+            </form>
+            <div class="login-extra">
+              <button type="button" id="forgotPwdBtn" class="link-btn">忘记密码？</button>
+              <button type="button" id="openApplyBtn" class="link-btn">申请管理员权限</button>
+            </div>
+          </div>
         </div>
-        <button class="primary" type="submit">登录</button>
-      </form>
-      <div class="login-extra">
-        <button type="button" id="forgotPwdBtn" class="link-btn">忘记密码？</button>
+
+        <div class="login-face login-face-back">
+          <div class="login-form-side">
+            <div class="login-form-head">
+              <h1>找回密码</h1>
+              <p>通过绑定邮箱重置管理员密码</p>
+            </div>
+            <div class="forgot-steps">
+              <span class="step active" data-step="1">1. 账号</span>
+              <span class="step" data-step="2">2. 验证邮箱</span>
+              <span class="step" data-step="3">3. 新密码</span>
+            </div>
+
+            <div class="forgot-step" data-step="1">
+              <label class="login-field">
+                <span class="login-field-label">管理员账号</span>
+                <input id="forgotName" type="text" placeholder="请输入登录用户名" autocomplete="username">
+              </label>
+              <p class="forgot-tip" id="forgotStep1Tip"></p>
+            </div>
+
+            <div class="forgot-step" data-step="2" style="display:none;">
+              <label class="login-field">
+                <span class="login-field-label">完整邮箱</span>
+                <input id="forgotEmail" type="email" placeholder="请输入账号绑定的完整邮箱" autocomplete="email">
+                <span class="login-field-hint">提示邮箱：<strong id="forgotMaskedEmail">--</strong>（仅展示部分字符，须填写完整）</span>
+              </label>
+              <label class="login-field">
+                <span class="login-field-label">邮箱验证码</span>
+                <div class="forgot-code-row">
+                  <input id="forgotCode" type="text" placeholder="请输入邮箱验证码" maxlength="12" autocomplete="off">
+                  <button type="button" id="forgotSendBtn" class="primary">发送验证码</button>
+                </div>
+              </label>
+              <p class="forgot-tip" id="forgotStep2Tip"></p>
+            </div>
+
+            <div class="forgot-step" data-step="3" style="display:none;">
+              <label class="login-field">
+                <span class="login-field-label">新密码</span>
+                <input id="forgotPwd1" type="password" placeholder="请输入新密码（至少 6 位）" autocomplete="new-password">
+              </label>
+              <label class="login-field">
+                <span class="login-field-label">确认新密码</span>
+                <input id="forgotPwd2" type="password" placeholder="请再次输入新密码" autocomplete="new-password">
+              </label>
+              <p class="forgot-tip" id="forgotStep3Tip"></p>
+            </div>
+
+            <p class="forgot-tip" id="forgotGlobalTip"></p>
+            <div class="forgot-actions">
+              <button type="button" id="forgotPrevBtn" style="display:none;">上一步</button>
+              <button type="button" id="forgotNextBtn" class="primary">下一步</button>
+            </div>
+            <div class="login-extra">
+              <button type="button" id="forgotBackBtn" class="link-btn">返回登录</button>
+            </div>
+          </div>
+          <aside class="login-hero">
+            <div class="login-hero-center">
+              <div class="login-hero-logo-wrap">
+                <img class="login-hero-logo" src="/static/icon.png?v=2" alt="Fool Chat">
+              </div>
+              <span class="login-hero-brand">Fool Chat</span>
+              <h2 class="login-hero-desc">找回登录密码<br>请按步骤完成验证</h2>
+            </div>
+            <div class="login-hero-footer">© Fool Chat · 管理员控制台</div>
+          </aside>
+        </div>
       </div>
-      <p class="login-error" id="loginError"></p>
     </div>
   </section>
 
-  <div id="forgotModalOverlay" class="modal-overlay">
-    <div class="modal-box forgot-modal-box">
-      <h2 class="forgot-title">找回密码</h2>
-      <div class="forgot-steps">
-        <span class="step active" data-step="1">1. 账号</span>
-        <span class="step" data-step="2">2. 验证码</span>
-        <span class="step" data-step="3">3. 新密码</span>
-      </div>
-
-      <div class="forgot-step" data-step="1">
-        <label class="forgot-label">管理员账号</label>
-        <input id="forgotName" type="text" placeholder="请输入登录用户名" autocomplete="username">
-        <p class="forgot-tip" id="forgotStep1Tip"></p>
-      </div>
-
-      <div class="forgot-step" data-step="2" style="display:none;">
-        <p class="forgot-tip">验证码将发送至：<strong id="forgotMaskedEmail">--</strong></p>
-        <div class="forgot-code-row">
-          <input id="forgotCode" type="text" placeholder="请输入邮箱验证码" maxlength="12" autocomplete="off">
-          <button type="button" id="forgotSendBtn" class="primary">发送验证码</button>
-        </div>
-        <p class="forgot-tip" id="forgotStep2Tip"></p>
-      </div>
-
-      <div class="forgot-step" data-step="3" style="display:none;">
-        <label class="forgot-label">新密码</label>
-        <input id="forgotPwd1" type="password" placeholder="请输入新密码（至少 6 位）" autocomplete="new-password">
-        <label class="forgot-label">确认新密码</label>
-        <input id="forgotPwd2" type="password" placeholder="请再次输入新密码" autocomplete="new-password">
-        <p class="forgot-tip" id="forgotStep3Tip"></p>
-      </div>
-
-      <div class="modal-actions forgot-actions">
-        <button type="button" id="forgotCancelBtn">取消</button>
-        <button type="button" id="forgotPrevBtn" style="display:none;">上一步</button>
-        <button type="button" id="forgotNextBtn" class="primary">下一步</button>
+  <div id="applyModalOverlay" class="modal-overlay">
+    <div class="modal-box apply-modal-box">
+      <h2>申请管理员</h2>
+      <p style="color:var(--muted);font-size:13px;">填写以下信息提交申请，审核通过后将获得管理员权限。</p>
+      <form id="applyForm" novalidate>
+        <label class="login-field">
+          <span class="login-field-label">账号名称</span>
+          <input id="applyAccount" type="text" placeholder="请输入你的 Fool Chat 账号" required autocomplete="off">
+        </label>
+        <label class="login-field">
+          <span class="login-field-label">绑定邮箱</span>
+          <input id="applyEmail" type="email" placeholder="请输入账号绑定的邮箱" required autocomplete="email">
+        </label>
+        <p class="login-error" id="applyError"></p>
+      </form>
+      <div class="modal-actions">
+        <button type="button" id="applyCancelBtn">取消</button>
+        <button type="button" id="applySubmitBtn" class="primary">提交申请</button>
       </div>
     </div>
   </div>
@@ -106,6 +203,8 @@
     <button class="nav" data-view="applies">好友申请</button>
     <button class="nav" data-view="star">公告</button>
     <button class="nav" data-view="notices">通知投递</button>
+    <button class="nav" data-view="admin-apply" id="navAdminApply" style="display:none;">管理员申请</button>
+    <button class="nav" data-view="email-notify">邮件通知</button>
     <button class="nav" data-view="ai">AI 助手</button>
   </aside>
 
@@ -135,7 +234,7 @@
         <div class="metric"><span>在线用户</span><strong id="mOnlineUsers">-</strong></div>
         <div class="metric"><span>后台通知</span><strong id="mNotices">-</strong></div>
         <div class="metric"><span>好友申请通过率</span><strong id="mApplyRate">-</strong></div>
-        <div class="metric"><span>通知送达率</span><strong id="mNoticeRate">-</strong></div>
+        <div class="metric"><span>管理员待审核</span><strong id="mPendingAdminApplies">-</strong></div>
         <div class="metric"><span>累计操作</span><strong id="mTotalOps">-</strong></div>
         <div class="metric"><span>今日操作</span><strong id="mTodayOps">-</strong></div>
         <div class="metric"><span>今日新增用户</span><strong id="mTodayUsers">-</strong></div>
@@ -184,11 +283,12 @@
             <option value="admin_notice">admin_notice</option>
             <option value="auth">auth</option>
             <option value="ai">ai</option>
+            <option value="admin_apply">admin_apply</option>
           </select>
           <select id="logOperatorFilter" style="width:auto;padding:6px 10px;font-size:13px;">
             <option value="">全部操作人</option>
           </select>
-          <select id="logActionFilter" style="width:auto;padding:6px 10px;font-size:13px;">
+          <select id="logActionFilter" style="width:120px;padding:6px 10px;font-size:13px;">
             <option value="">全部操作</option>
             <option value="create">新增</option>
             <option value="update">编辑</option>
@@ -299,7 +399,8 @@
           <option value="1">审核中</option>
           <option value="2">违规隐藏</option>
         </select>
-        <button id="exportDynamics" style="margin-left:auto">导出</button>
+        <button type="button" id="aiReviewDynamicsBtn" class="danger" style="margin-left:auto">AI 自动审核</button>
+        <button id="exportDynamics">导出</button>
       </div>
       <div class="table-wrap"><table id="dynamicTable"></table></div>
       <div class="pager" id="dynamicPager"></div>
@@ -350,6 +451,37 @@
       <div class="pager" id="noticePager"></div>
     </section>
 
+    <section id="admin-apply" class="view">
+      <div class="toolbar">
+        <select id="applyStatusFilter" style="width:120px;padding:6px 12px;font-size:13px;">
+          <option value="">全部状态</option>
+          <option value="pending">待审核</option>
+          <option value="approved">已通过</option>
+          <option value="rejected">已拒绝</option>
+        </select>
+        <button type="button" id="aiRejectAllPending" class="danger" style="margin-left:auto">AI 一键拒绝所有待审</button>
+        <button type="button" id="searchAdminApply">刷新</button>
+      </div>
+      <div class="table-wrap"><table id="adminApplyTable"></table></div>
+      <div class="pager" id="adminApplyPager"></div>
+    </section>
+
+    <section id="email-notify" class="view">
+      <div class="toolbar">
+        <button class="primary" id="createEmailBtn">新建邮件</button>
+        <select id="emailStatusFilter" style="width:120px;padding:6px 12px;font-size:13px;">
+          <option value="">全部状态</option>
+          <option value="draft">草稿</option>
+          <option value="sending">发送中</option>
+          <option value="sent">已发送</option>
+          <option value="failed">发送失败</option>
+        </select>
+        <button type="button" id="searchEmailDraft">刷新</button>
+      </div>
+      <div class="table-wrap"><table id="emailDraftTable"></table></div>
+      <div class="pager" id="emailDraftPager"></div>
+    </section>
+
     <section id="ai" class="view">
       <div class="ai-layout">
         <div class="panel ai-panel">
@@ -397,6 +529,7 @@
               <button type="button" class="ai-help-item" data-template="下载当前壁纸">下载壁纸</button>
               <button type="button" class="ai-help-item" data-template="打开用户页面">跳转页面</button>
               <button type="button" class="ai-help-item" data-template="切换暗黑主题">切换主题</button>
+              <button type="button" class="ai-help-item ai-help-danger" data-template="自动审批待审核动态">AI 自动审批动态（高危）</button>
               <button type="button" class="ai-help-item ai-help-danger" data-template="删除 uid [UID] 的用户">删除用户（高危）</button>
             </div>
           </div>
@@ -436,7 +569,7 @@
     </div>
   </div>
   <script src="/static/xlsx.full.min.js"></script>
-  <script src="/static/app.js?v=41"></script>
+  <script src="/static/app.js?v=66"></script>
 </body>
 </html>
 

@@ -27,6 +27,11 @@ type appConfig struct {
 	StatusAddr      string
 	ChatServer1Addr string
 	ChatServer2Addr string
+	SMTPHost        string
+	SMTPPort        string
+	SMTPUser        string
+	SMTPPassword    string
+	SMTPFrom        string
 }
 
 func loadConfig(path string) appConfig {
@@ -113,6 +118,16 @@ func loadConfig(path string) appConfig {
 			cfg.ChatServer1Addr = value
 		case "services.chat_server2":
 			cfg.ChatServer2Addr = value
+		case "smtp.host":
+			cfg.SMTPHost = value
+		case "smtp.port":
+			cfg.SMTPPort = value
+		case "smtp.user":
+			cfg.SMTPUser = value
+		case "smtp.password":
+			cfg.SMTPPassword = value
+		case "smtp.from":
+			cfg.SMTPFrom = value
 		}
 	}
 	return cfg

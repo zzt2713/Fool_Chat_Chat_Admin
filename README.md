@@ -228,8 +228,6 @@ scp -r ./templates ./static   root@<server>:/opt/fool_chat_admin_go/
 ssh root@<server> "systemctl restart fool-chat-admin"
 ```
 
-> 改 Go 代码 → 必须重新编译并替换二进制；只改前端可只上传 `static/`、`templates/`。
-
 ## 安全策略
 
 - 后台仅允许 `role >= 1` 登录
@@ -247,12 +245,7 @@ ssh root@<server> "systemctl restart fool-chat-admin"
 - [ ] 通知投递回执统计
 - [ ] 集成测试
 
-## License
 
-MIT. 见 [LICENSE](./LICENSE)（如未提供，请根据需要补充）。
 
-## 致谢
 
-- [go-sql-driver/mysql](https://github.com/go-sql-driver/mysql)
-- [SheetJS](https://github.com/SheetJS/sheetjs)
-- [DeepSeek](https://www.deepseek.com/) / OpenAI Compatible API
+

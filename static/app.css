@@ -851,14 +851,71 @@ label {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-top: 10px;
   color: var(--muted);
   font-size: 13px;
+  flex-wrap: wrap;
 }
 
 .pager button {
-  padding: 7px 11px;
+  padding: 6px 10px;
+  min-width: 34px;
+  text-align: center;
+}
+
+.pager button.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: transparent;
+  pointer-events: none;
+}
+
+.pager-ellipsis {
+  padding: 0 2px;
+  color: var(--muted);
+  user-select: none;
+}
+
+.pager-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
+.pager-size-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.pager-size-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(71,85,105,0.08);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.pager-size-btn:hover {
+  background: rgba(71,85,105,0.15);
+  color: var(--text);
+}
+
+.pager-size-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: transparent;
+  pointer-events: none;
+}
+
+.pager-total {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 table {
@@ -1283,12 +1340,6 @@ body.dark tbody tr:hover {
   margin-left: 0;
 }
 
-.pager-total {
-  margin-right: auto;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 #toast {
   position: fixed;
   left: 50%;
@@ -1623,58 +1674,218 @@ body.dark .modal-actions button:first-child:hover {
   position: fixed;
   inset: 0;
   z-index: 50;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   background: var(--bg);
 }
 
-.login-page.show {
-  display: flex;
-}
-
-body.logged-out .sidebar,
-body.logged-out .main {
+.login-page.hide {
   display: none;
 }
 
-.login-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 36px 32px 28px;
-  width: 360px;
-  text-align: center;
-  box-shadow: 0 20px 60px var(--shadow);
+body.logged-out .sidebar,
+body.logged-out .main,
+html.is-logged-out .sidebar,
+html.is-logged-out .main {
+  display: none;
 }
 
-.login-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  object-fit: cover;
+html.is-logged-in .login-page {
+  display: none !important;
+}
+
+.login-card {
+  width: 780px;
+  height: 500px;
+  perspective: 1200px;
+  position: relative;
+}
+
+.login-flip {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-card.is-flipped .login-flip {
+  transform: rotateY(180deg);
+}
+
+.login-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px var(--shadow);
+  border: 1px solid var(--line);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.login-face-front {
+  z-index: 2;
+}
+
+.login-face-back {
+  transform: rotateY(180deg);
+}
+
+.login-hero {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px 50px;
+  background: url("/static/background.webp") center/cover no-repeat;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.login-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(15,23,42,0.75), rgba(15,23,42,0.75)),
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
+  pointer-events: none;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.login-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.login-hero-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.login-hero-logo-wrap {
+  position: relative;
+  width: 116px;
+  height: 116px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28px;
+  border-radius: 22px;
+  background: rgba(255,255,255,0.14);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.3);
+  box-shadow:
+    0 0 14px rgba(255,255,255,0.08),
+    inset 0 0 28px rgba(255,255,255,0.15);
+}
+
+.login-hero-logo {
+  width: 104px;
+  height: 104px;
+  border-radius: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.login-hero-brand {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 1px;
   margin-bottom: 14px;
 }
 
-.login-card h1 {
-  font-size: 20px;
-  margin-bottom: 4px;
+.login-hero-desc {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.8;
+  margin: 0;
+  opacity: 0.65;
 }
 
-.login-card > p {
-  color: var(--muted);
-  font-size: 13px;
+.login-hero-footer {
+  position: absolute;
+  bottom: 18px;
+  font-size: 12px;
+  opacity: 0.45;
+}
+
+.login-form-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 36px 28px;
+  background: var(--panel);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.login-form-head {
+  text-align: left;
   margin-bottom: 20px;
 }
 
-.login-card form {
+.login-form-head h1 {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.login-form-head p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.login-form-side form {
   display: grid;
   gap: 12px;
 }
 
-.login-card form input {
+.login-form-side form input {
   padding: 12px 14px;
   font-size: 14px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+.login-form-side form input:focus {
+  background: #fff;
+  border-color: var(--primary);
+}
+
+.login-field {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+}
+
+.login-form-side .login-field {
+  color: var(--text);
+}
+
+.login-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.login-field-hint {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .password-field {
@@ -1710,28 +1921,52 @@ body.logged-out .main {
   color: var(--primary);
 }
 
-.login-card form button {
+.pw-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.pw-icon-hide { display: none; }
+
+.password-toggle[aria-pressed="true"] .pw-icon-show { display: none; }
+.password-toggle[aria-pressed="true"] .pw-icon-hide { display: block; }
+
+.login-form-side form button {
   margin-top: 4px;
   padding: 12px;
   font-size: 15px;
 }
 
-.login-card form .password-toggle {
+.login-form-side form .password-toggle {
   margin-top: 0;
   padding: 0;
 }
 
 .login-error {
-  color: #dc2626;
+  color: var(--danger);
   font-size: 13px;
-  min-height: 20px;
-  margin-top: 8px;
+  margin: 0;
+}
+
+.login-error:empty {
+  display: none;
 }
 
 body.dark .login-card {
-  background: #1e293b;
-  border-color: #273244;
   box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+
+body.dark .login-form-side {
+  background: #1e293b;
+}
+
+body.dark .login-hero::before {
+  background: linear-gradient(135deg, rgba(37,99,235,0.25) 0%, rgba(15,23,42,0.7) 100%);
 }
 
 /* ---- View Background Mode ---- */
@@ -2300,7 +2535,9 @@ body.dark .ai-message .md-inline-code {
 
 .login-extra {
   margin-top: 10px;
-  text-align: right;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .link-btn {
@@ -2313,7 +2550,10 @@ body.dark .ai-message .md-inline-code {
 }
 
 .link-btn:hover {
-  text-decoration: underline;
+  background: none;
+  box-shadow: none;
+  transform: none;
+  text-decoration: none;
 }
 
 .forgot-modal-box {
@@ -2410,4 +2650,100 @@ body.dark .forgot-step input {
   border-color: #273244;
 }
 
+/* ---- Login Apply Button ---- */
 
+.apply-modal-box {
+  min-width: 420px;
+  max-width: 480px;
+  padding: 24px 28px 22px;
+  background: #fff;
+  border: 1px solid var(--line);
+  text-align: left;
+}
+.apply-modal-box h2 {
+  margin-bottom: 4px;
+}
+
+.apply-modal-box > p {
+  margin-bottom: 12px;
+}
+.apply-modal-box .login-field {
+  margin-bottom: 0;
+}
+.apply-modal-box .modal-actions {
+  margin-top: 14px;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+#applyForm {
+  display: grid;
+  gap: 10px;
+}
+body.dark .apply-modal-box {
+  background: #1e293b;
+  border-color: #374151;
+}
+
+.apply-review-modal {
+  background: var(--panel-glass);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.18);
+}
+
+/* ---- Admin Apply Table ---- */
+.admin-apply-actions-cell {
+  white-space: nowrap;
+}
+.admin-apply-actions-cell .table-actions {
+  display: flex;
+  gap: 6px;
+}
+.admin-apply-actions-cell .table-actions button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+.admin-apply-actions-cell .table-actions button[data-apply-action="approve"] {
+  color: var(--ok);
+}
+.admin-apply-actions-cell .table-actions button[data-apply-action="approve"]:hover {
+  background: rgba(5,150,105,0.12);
+}
+.admin-apply-actions-cell .table-actions button[data-apply-action="reject"] {
+  color: var(--danger);
+}
+.admin-apply-actions-cell .table-actions button[data-apply-action="reject"]:hover {
+  background: rgba(220,38,38,0.12);
+}
+
+body.dark .apply-review-modal {
+  background: rgba(17, 24, 39, 0.6);
+  border-color: rgba(39, 50, 68, 0.4);
+}
+
+.apply-modal-box .modal-actions {
+  gap: 40px;
+}
+
+/* ---- AI Optimize Link ---- */
+.ai-opt-link {
+  display: block;
+  justify-self: end;
+  background: rgba(37,99,235,0.08);
+  border: none;
+  border-radius: 4px;
+  color: var(--primary);
+  font-size: 12px;
+  padding: 2px 8px;
+  margin-top: 2px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.ai-opt-link:hover {
+  background: rgba(37,99,235,0.16);
+  color: var(--primary-dark);
+}
+.ai-opt-link:disabled { opacity: .4; cursor: not-allowed; }
+body.dark .ai-opt-link { color: #60a5fa; background: rgba(96,165,250,0.12); }
+body.dark .ai-opt-link:hover { background: rgba(96,165,250,0.22); }

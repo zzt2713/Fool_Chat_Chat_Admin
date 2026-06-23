@@ -19,6 +19,9 @@ type app struct {
 	sessions map[string]string
 	mu       sync.RWMutex
 	cfg      appConfig
+
+	superAdminCache map[string]bool
+	saCacheMu       sync.RWMutex
 }
 
 func main() {
@@ -30,10 +33,11 @@ func main() {
 	defer db.Close()
 
 	a := &app{
-		db:       db,
-		tpl:      template.Must(template.ParseFiles("templates/index.html")),
-		sessions: map[string]string{},
-		cfg:      cfg,
+		db:              db,
+		tpl:             template.Must(template.ParseFiles("templates/index.html")),
+		sessions:        map[string]string{},
+		cfg:             cfg,
+		superAdminCache: map[string]bool{},
 	}
 	if err := a.ensureSchema(); err != nil {
 		log.Printf("[WARN] schema init failed: %v", err)
@@ -107,6 +111,8 @@ func (a *app) ensureSchema() error {
 		}
 	}
 	a.ensureAIChatSchema()
+	a.ensureAdminApplySchema()
+	a.ensureEmailDraftSchema()
 	return nil
 }
 
@@ -130,6 +136,42 @@ func (a *app) ensureAIChatSchema() {
 			log.Printf("[WARN] add session_id failed: %v", err)
 		}
 	}
+}
+
+func (a *app) ensureAdminApplySchema() {
+	_, _ = a.db.Exec(`CREATE TABLE IF NOT EXISTS admin_application (
+		id BIGINT NOT NULL AUTO_INCREMENT,
+		account VARCHAR(80) NOT NULL DEFAULT '',
+		email VARCHAR(120) NOT NULL DEFAULT '',
+		status VARCHAR(20) NOT NULL DEFAULT 'pending',
+		review_note TEXT NULL,
+		reviewed_by VARCHAR(80) NULL DEFAULT NULL,
+		review_time DATETIME NULL DEFAULT NULL,
+		ip VARCHAR(64) NULL DEFAULT '',
+		create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (id),
+		INDEX idx_account (account),
+		INDEX idx_status (status),
+		INDEX idx_create_time (create_time)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+}
+
+func (a *app) ensureEmailDraftSchema() {
+	_, _ = a.db.Exec(`CREATE TABLE IF NOT EXISTS email_draft (
+		id BIGINT NOT NULL AUTO_INCREMENT,
+		subject VARCHAR(120) NOT NULL DEFAULT '',
+		content TEXT NULL,
+		target_type VARCHAR(20) NOT NULL DEFAULT 'all',
+		target_email VARCHAR(120) NULL DEFAULT NULL,
+		status VARCHAR(20) NOT NULL DEFAULT 'draft',
+		error_msg VARCHAR(255) NULL DEFAULT NULL,
+		operator VARCHAR(80) NOT NULL DEFAULT '',
+		send_time DATETIME NULL DEFAULT NULL,
+		create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (id),
+		INDEX idx_status (status),
+		INDEX idx_create_time (create_time)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
 }
 
 func (a *app) index(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +198,14 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/password-reset/") {
 		a.passwordReset(w, r)
+		return
+	}
+	if r.URL.Path == "/api/admin-apply/submit" {
+		a.adminApplySubmit(w, r)
+		return
+	}
+	if r.URL.Path == "/api/admin-apply/status" {
+		a.adminApplyStatus(w, r)
 		return
 	}
 	user, ok := a.currentUser(r)
@@ -185,6 +235,8 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.userByID(w, r, user)
 	case r.URL.Path == "/api/dynamics":
 		a.dynamics(w, r, user)
+	case r.URL.Path == "/api/dynamics/ai-review":
+		a.dynamicsAIReview(w, r, user)
 	case strings.HasPrefix(r.URL.Path, "/api/dynamics/"):
 		a.dynamicByID(w, r, user)
 	case r.URL.Path == "/api/friend-applies":
@@ -201,12 +253,28 @@ func (a *app) api(w http.ResponseWriter, r *http.Request) {
 		a.adminNotices(w, r, user)
 	case r.URL.Path == "/api/ai/chat":
 		a.aiChat(w, r, user)
+	case r.URL.Path == "/api/ai/optimize-text":
+		a.aiOptimizeText(w, r, user)
 	case r.URL.Path == "/api/ai/sessions":
 		a.aiSessions(w, r, user)
 	case strings.HasPrefix(r.URL.Path, "/api/ai/sessions/"):
 		a.aiSessionByID(w, r, user)
 	case strings.HasPrefix(r.URL.Path, "/api/admin-notices/"):
 		a.adminNoticeByID(w, r, user)
+	case r.URL.Path == "/api/admin-apply/list":
+		a.adminApplyList(w, r, user)
+	case r.URL.Path == "/api/admin-apply/review":
+		a.adminApplyReview(w, r, user)
+	case r.URL.Path == "/api/admin-apply/ai-reject-all":
+		a.adminApplyAIRejectAll(w, r, user)
+	case r.URL.Path == "/api/email-draft/list":
+		a.emailDraftList(w, r, user)
+	case r.URL.Path == "/api/email-draft/save":
+		a.emailDraftSave(w, r, user)
+	case r.URL.Path == "/api/email-draft/send":
+		a.emailDraftSend(w, r, user)
+	case r.URL.Path == "/api/email-draft/delete":
+		a.emailDraftDelete(w, r, user)
 	default:
 		writeErr(w, http.StatusNotFound, "接口不存在")
 	}

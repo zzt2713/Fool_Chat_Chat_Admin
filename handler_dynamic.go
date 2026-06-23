@@ -40,7 +40,17 @@ func (a *app) dynamics(w http.ResponseWriter, r *http.Request, operator string) 
 			writeErr(w, 500, err.Error())
 			return
 		}
-		writeJSON(w, rows)
+		var total int
+		countArgs := []any{}
+		if s := trim(q.Get("q"), 0); s != "" {
+			kw := "%" + s + "%"
+			countArgs = append(countArgs, kw, kw, kw, kw)
+		}
+		if s := q.Get("status"); s == "0" || s == "1" || s == "2" {
+			countArgs = append(countArgs, s)
+		}
+		_ = a.db.QueryRow(`SELECT COUNT(*) FROM `+"`dynamic`"+` d LEFT JOIN `+"`user`"+` u ON d.uid = u.uid `+whereSQL(conditions), countArgs...).Scan(&total)
+		writeJSON(w, map[string]any{"items": rows, "total": total})
 	case http.MethodPost:
 		var p dynamicPayload
 		if !decodeJSON(w, r, &p) {
@@ -107,4 +117,21 @@ func (a *app) dynamicByID(w http.ResponseWriter, r *http.Request, operator strin
 	default:
 		writeErr(w, 405, "方法不支持")
 	}
+}
+
+func (a *app) dynamicsAIReview(w http.ResponseWriter, r *http.Request, operator string) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "方法不支持")
+		return
+	}
+	limit := 50
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+		limit = n
+	}
+	res, err := a.runAutoReviewDynamics(r, operator, limit)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, res)
 }

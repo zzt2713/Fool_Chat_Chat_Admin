@@ -57,7 +57,14 @@ func (a *app) users(w http.ResponseWriter, r *http.Request, operator string) {
 			writeErr(w, 500, err.Error())
 			return
 		}
-		writeJSON(w, rows)
+		var total int
+		countArgs := []any{}
+		if q != "" {
+			kw := "%" + q + "%"
+			countArgs = append(countArgs, kw, kw, kw, kw)
+		}
+		_ = a.db.QueryRow("SELECT COUNT(*) FROM `user` "+where, countArgs...).Scan(&total)
+		writeJSON(w, map[string]any{"items": rows, "total": total})
 	case http.MethodPost:
 		var p userPayload
 		if !decodeJSON(w, r, &p) {

@@ -17,6 +17,7 @@ var errVerifyFailed = errors.New("验证码服务返回失败")
 
 type passwordResetPayload struct {
 	Name     string `json:"name"`
+	Email    string `json:"email"`
 	Code     string `json:"code"`
 	Password string `json:"password"`
 }
@@ -42,6 +43,12 @@ func (a *app) passwordReset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.passwordResetSend(w, r)
+	case "/api/password-reset/verify":
+		if r.Method != http.MethodPost {
+			writeErr(w, http.StatusMethodNotAllowed, "方法不允许")
+			return
+		}
+		a.passwordResetVerify(w, r)
 	case "/api/password-reset/reset":
 		if r.Method != http.MethodPost {
 			writeErr(w, http.StatusMethodNotAllowed, "方法不允许")
@@ -79,6 +86,15 @@ func (a *app) passwordResetSend(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "账号不存在或未绑定邮箱")
 		return
 	}
+	inputEmail := strings.ToLower(strings.TrimSpace(p.Email))
+	if inputEmail == "" {
+		writeErr(w, http.StatusBadRequest, "请填写完整邮箱")
+		return
+	}
+	if inputEmail != strings.ToLower(strings.TrimSpace(account.Email)) {
+		writeErr(w, http.StatusBadRequest, "邮箱与账号绑定的邮箱不一致")
+		return
+	}
 	if err := a.sendVerifyCode(account.Email); err != nil {
 		log.Printf("[password-reset] send verify code failed: email=%s err=%v", account.Email, err)
 		writeErr(w, http.StatusBadGateway, "验证码发送失败："+err.Error())
@@ -87,12 +103,41 @@ func (a *app) passwordResetSend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "masked_email": maskEmail(account.Email)})
 }
 
+func (a *app) passwordResetVerify(w http.ResponseWriter, r *http.Request) {
+	var p passwordResetPayload
+	if !decodeJSON(w, r, &p) {
+		return
+	}
+	name := strings.TrimSpace(p.Name)
+	email := strings.ToLower(strings.TrimSpace(p.Email))
+	code := strings.ToUpper(strings.TrimSpace(p.Code))
+	if name == "" || email == "" || code == "" {
+		writeErr(w, http.StatusBadRequest, "请填写账号、邮箱和验证码")
+		return
+	}
+	account, ok := a.findResetAccount(name)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "账号不存在或未绑定邮箱")
+		return
+	}
+	if email != strings.ToLower(strings.TrimSpace(account.Email)) {
+		writeErr(w, http.StatusBadRequest, "邮箱与账号绑定的邮箱不一致")
+		return
+	}
+	if !a.checkResetCode(account.Email, code) {
+		writeErr(w, http.StatusBadRequest, "验证码错误或已过期")
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 func (a *app) passwordResetConfirm(w http.ResponseWriter, r *http.Request) {
 	var p passwordResetPayload
 	if !decodeJSON(w, r, &p) {
 		return
 	}
 	p.Name = strings.TrimSpace(p.Name)
+	p.Email = strings.ToLower(strings.TrimSpace(p.Email))
 	p.Code = strings.ToUpper(strings.TrimSpace(p.Code))
 	p.Password = strings.TrimSpace(p.Password)
 	if p.Name == "" || p.Code == "" || len(p.Password) < 3 {
@@ -102,6 +147,10 @@ func (a *app) passwordResetConfirm(w http.ResponseWriter, r *http.Request) {
 	account, ok := a.findResetAccount(p.Name)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "账号不存在或未绑定邮箱")
+		return
+	}
+	if p.Email != "" && p.Email != strings.ToLower(strings.TrimSpace(account.Email)) {
+		writeErr(w, http.StatusBadRequest, "邮箱与账号绑定的邮箱不一致")
 		return
 	}
 	if !a.checkResetCode(account.Email, p.Code) {
