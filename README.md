@@ -1,8 +1,8 @@
 # Fool Chat Admin
 
-> Web 管理后台 · Go + MySQL + 原生前端 · 内置 AI 管理助手与数据备份能力
+> Web 管理后台 · Go + MySQL + 原生前端 · 内置 AI 管理助手、邮件通知与数据备份能力
 
-Fool Chat Admin 是 [Fool Chat](https://github.com/zzt2713/Fool_Chat_Chat_Admin) 即时通讯系统的 Web 管理后台。面向运营、审核与系统管理员，提供用户、动态、好友、公告、通知、操作日志、数据概览、数据备份和 AI 助手等一站式管理能力。
+Fool Chat Admin 是 [Fool Chat](https://github.com/zzt2713/Fool_Chat_Chat_Admin) 即时通讯系统的 Web 管理后台。面向运营、审核与系统管理员，提供用户、动态、好友、公告、通知、邮件通知、管理员申请审核、操作日志、数据概览、数据备份和 AI 助手等一站式管理能力。
 
 项目使用 Go 标准库 `net/http` 直接对外提供服务，前端无构建步骤，单二进制 + 静态目录即可部署。
 
@@ -18,12 +18,14 @@ Fool Chat Admin 是 [Fool Chat](https://github.com/zzt2713/Fool_Chat_Chat_Admin)
 - **内容审核**：动态列表筛选、状态切换、批量隐藏、按关键词批量处理
 - **关系治理**：好友申请处理、好友关系解除、申请状态可审计
 - **公告 / 通知**：StarNotice 公告、admin_notice 投递（广播 / 定向 + 等级）
+- **管理员申请**：用户申请管理员权限、后台审核通过/拒绝
+- **邮件通知**：草稿编辑、全部/单用户发送、AI 润色、SMTP 发送与状态追踪
 - **操作日志**：所有写操作落 `admin_operation_log`，支持搜索、筛选、导出
 - **数据看板**：14 项核心指标 + 14 天趋势图 + 申请通过率 + 最近异常
 - **数据维护 / 备份**：用户 / 动态 / 日志 CSV 导出、一键 CSV ZIP、一键多 Sheet Excel、数据库连接信息可视化
 - **找回密码**：基于 VarifyServer 的邮箱验证码三步重置
 - **AI 助手**：自然语言驱动、动作白名单、高危确认、多会话历史
-- **前端体验**：随机壁纸 / 本地图片 / URL 图片 / 清除背景 / 暗黑模式 / 沉浸预览
+- **前端体验**：登录页双栏布局 / 全局分页（页码跳转 + 每页条数选择）/ 随机壁纸 / 本地图片 / URL 图片 / 清除背景 / 暗黑模式 / 沉浸预览
 
 ## 技术栈
 
@@ -34,8 +36,9 @@ Fool Chat Admin 是 [Fool Chat](https://github.com/zzt2713/Fool_Chat_Chat_Admin)
 | 数据库 | MySQL 5.7+ / 8.0 |
 | 前端 | 原生 HTML / CSS / JavaScript，无构建 |
 | 表格导出 | [SheetJS](https://github.com/SheetJS/sheetjs) 浏览器侧生成 Excel |
+| 邮件 | Go 标准库 `net/smtp`（SMTP 发送） |
 | AI | OpenAI （使用的 DeepSeek-v4-flash） |
-| 部署 | ystemd |
+| 部署 | systemd |
 
 ## 快速开始
 
@@ -102,6 +105,19 @@ ai:
   base_url: https://api.deepseek.com
   api_key: your_ai_api_key
   model: deepseek-chat
+
+services:
+  gate_server: 127.0.0.1:8080
+  status_server: 127.0.0.1:50052
+  chat_server1: 127.0.0.1:8090
+  chat_server2: 127.0.0.1:8091
+
+smtp:
+  host: smtp.example.com
+  port: "465"
+  user: your_email@example.com
+  password: your_smtp_password
+  from: your_email@example.com
 ```
 
 ## 项目结构
@@ -112,6 +128,7 @@ fool_chat_admin_go/
 ├── auth.go                       # 登录 / Session / 权限
 ├── db.go / config.go / util.go   # 数据库 / 配置 / 通用工具
 ├── log.go                        # 操作日志统一落库
+├── mail.go                       # SMTP 邮件发送
 ├── handler_user.go               # 用户管理
 ├── handler_dynamic.go            # 动态管理
 ├── handler_notice.go             # 好友 / 公告 / 通知
@@ -119,12 +136,15 @@ fool_chat_admin_go/
 ├── handler_monitor.go            # 服务状态监控
 ├── handler_maintenance.go        # 数据维护与备份导出
 ├── handler_password_reset.go     # 找回密码三步流程
+├── handler_admin_apply.go        # 管理员申请审核
+├── handler_email.go              # 邮件通知（草稿 / 发送）
 ├── handler_ai.go                 # AI 助手对话与动作调度
 ├── verify_client.go              # gRPC 调 VarifyServer
 ├── templates/index.html          # 单页前端模板
 └── static/
     ├── app.js / app.css          # 前端逻辑与样式
-    ├── icon.png			     # 网页icon
+    ├── icon.png                  # 网页 icon
+    ├── background.webp           # 登录页默认背景
     └── xlsx.full.min.js          # Excel 导出依赖
 ```
 
@@ -144,6 +164,24 @@ fool_chat_admin_go/
 | --- | --- | --- |
 | `GET` | `/api/maintenance/summary` | 数据量 + 数据库连接信息 |
 | `GET` | `/api/maintenance/export?type=users\|dynamics\|logs\|all` | CSV 或 ZIP 下载 |
+
+## 管理员申请
+
+用户可通过前端申请管理员权限，后台「管理员申请」页进行审核：
+
+- **申请列表**：显示申请人、申请理由、当前状态（待审核 / 通过 / 拒绝）
+- **审核操作**：通过 / 拒绝，操作记入审计日志
+- **AI 批量拒绝**：AI 助手可一键拒绝所有待审核申请
+
+## 邮件通知
+
+后台「邮件通知」页支持向用户发送邮件通知：
+
+- **草稿管理**：新建、编辑、删除草稿
+- **发送对象**：全部用户（广播）或指定单个用户
+- **AI 润色**：借助 AI 优化邮件标题和正文
+- **SMTP 发送**：异步发送，状态追踪（草稿 → 发送中 → 已发送 / 失败）
+- **发送记录**：查看已发送邮件列表，失败邮件可查看错误信息
 
 ## AI 管理助手
 
@@ -172,6 +210,7 @@ Cookie: fool_chat_admin_session=...
 - 删除用户额外要求二级密码
 - AI 触发的写操作全部落 `admin_operation_log`
 - 多会话历史落 `ai_chat_message`，按 `session_id` 切换
+- 支持通过 AI 一键拒绝所有待审核管理员申请
 
 ## API 概览
 
@@ -189,6 +228,8 @@ Cookie: fool_chat_admin_session=...
 | 好友 | `GET /api/friend-applies`、`PATCH /api/friend-applies/{id}`、`GET /api/friends`、`DELETE /api/friends/{a}/{b}` |
 | 公告 | `GET/POST/PATCH/DELETE /api/star-notices` |
 | 通知 | `GET/POST /api/admin-notices`、`PATCH/DELETE /api/admin-notices/{id}` |
+| 管理员申请 | `GET /api/admin-applies`、`PATCH /api/admin-applies/{id}` |
+| 邮件通知 | `GET /api/email-draft/list`、`POST /api/email-draft/{save,send,delete}` |
 | AI | `POST /api/ai/chat`、`GET/DELETE /api/ai/sessions/{id}` |
 
 ## Linux 部署
@@ -238,6 +279,9 @@ ssh root@<server> "systemctl restart fool-chat-admin"
 
 ## Roadmap
 
+- [x] 管理员申请审核流程
+- [x] 邮件通知系统（草稿 / 发送 / AI 润色）
+- [x] 全局分页组件（页码跳转 + 每页条数选择）
 - [ ] RBAC 菜单 / 按钮级权限
 - [ ] Session 迁移 Redis 支持多实例
 - [ ] 数据库迁移脚本替代启动自动建表
